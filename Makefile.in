@@ -1488,8 +1488,6 @@ redist: all
 	mv $(REDIST_DIR) $(BUILD_NAME)
 	XZ_OPT="-9 -T$(J)" tar -cvJf $(BUILD_NAME).tar.xz $(BUILD_NAME)
 	sha512sum $(BUILD_NAME).tar.xz > $(BUILD_NAME).sha512sum
-	tar -cvaf $(BUILD_NAME).tar.zst $(BUILD_NAME)
-	sha256sum $(BUILD_NAME).* > SHA256SUMS
 	@echo "Proton build available at $(BUILD_NAME).tar.xz"
 
 ##
