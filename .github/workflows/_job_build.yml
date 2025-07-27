@@ -58,11 +58,11 @@ jobs:
         path: ~/.ccache
         key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
 
-    - name: Upload artifact ${{ inputs.name }}.tar.gz
+    - name: Upload artifact ${{ inputs.name }}.tar.xz
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ inputs.name }}.tar.gz
-        path: ./build/${{ inputs.name }}.tar.gz
+        name: ${{ inputs.name }}.tar.xz
+        path: ./build/${{ inputs.name }}.tar.xz
 
     - name: Upload artifact ${{ inputs.name }}.tar.zst
       uses: actions/upload-artifact@v4
