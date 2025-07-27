@@ -19,9 +19,9 @@ $$(OBJ)/.$(1)-$(3)-configure: $$(OBJ)/.wine-$$(HOST_ARCH)-tools
 	    -e '/^libdir/c libdir = $$($(2)_$(3)_LIBDIR)' \
 	    -e '/^toolsdir/c toolsdir = $$(WINE_$$(HOST_ARCH)_OBJ)' \
 	    \
-	    -e '/^CFLAGS/c CFLAGS = $$($(2)_$(3)_INCFLAGS) $$($(2)_CFLAGS) $$($(3)_CFLAGS) $$(CFLAGS)' \
-	    -e '/^CPPFLAGS/c CPPFLAGS = $$($(2)_$(3)_INCFLAGS) $$($(2)_CFLAGS) $$($(3)_CFLAGS) $$(CFLAGS)' \
-	    -e '/^CXXFLAGS/c CXXFLAGS = $$($(2)_$(3)_INCFLAGS) -std=c++17 $$($(2)_CFLAGS) $$($(3)_CFLAGS) $$(CFLAGS)' \
+	    -e '/^CFLAGS/c CFLAGS = $$($(2)_$(3)_INCFLAGS) $$(CFLAGS) $$($(3)_CFLAGS) $$($(2)_CFLAGS) $$($(2)_$(3)_CFLAGS)' \
+	    -e '/^CPPFLAGS/c CPPFLAGS = $$($(2)_$(3)_INCFLAGS) $$(CFLAGS) $$($(3)_CFLAGS) $$($(2)_CFLAGS) $$($(2)_$(3)_CFLAGS)' \
+	    -e '/^CXXFLAGS/c CXXFLAGS = $$($(2)_$(3)_INCFLAGS) -std=c++17 $$(CFLAGS) $$($(3)_CFLAGS) $$($(2)_CFLAGS) $$($(2)_$(3)_CFLAGS)' \
 	    -e '/^LDFLAGS/c LDFLAGS = $$($(2)_$(3)-$(4)_LIBFLAGS) $$($(2)_$(3)_LIBFLAGS) $$($(2)_LDFLAGS) $$($(3)_LDFLAGS) $$(LDFLAGS)' \
 	    \
 	    -e '/^x86_64_CC/a x86_64_CXX = $$(x86_64-windows_TARGET)-g++' \
