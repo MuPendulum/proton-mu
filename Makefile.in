@@ -810,6 +810,9 @@ DXVK_i386_MESON_ARGS = --bindir=$(DXVK_i386_DST)/lib/wine/dxvk/i386-windows
 DXVK_x86_64_MESON_ARGS = --bindir=$(DXVK_x86_64_DST)/lib/wine/dxvk/x86_64-windows
 DXVK_HOST_DEPENDS = glslang
 
+DXVK_CFLAGS = -O3 -mno-avx
+DXVK_i386_CFLAGS = -mpreferred-stack-boundary=2
+
 $(eval $(call rules-source,dxvk,$(SRCDIR)/dxvk))
 $(eval $(call rules-meson,dxvk,i386,windows))
 $(eval $(call rules-meson,dxvk,x86_64,windows))
@@ -829,6 +832,9 @@ $(OBJ)/.dxvk-post-source:
 
 DXVK_NVAPI_i386_MESON_ARGS = --bindir=$(DXVK_NVAPI_i386_DST)/lib/wine/nvapi/i386-windows
 DXVK_NVAPI_x86_64_MESON_ARGS = --bindir=$(DXVK_NVAPI_x86_64_DST)/lib/wine/nvapi/x86_64-windows
+
+DXVK_NVAPI_CFLAGS = -O3
+DXVK_NVAPI_i386_CFLAGS = -mpreferred-stack-boundary=2
 
 $(eval $(call rules-source,dxvk-nvapi,$(SRCDIR)/dxvk-nvapi))
 $(eval $(call rules-meson,dxvk-nvapi,i386,windows))
@@ -868,7 +874,8 @@ VKD3D_AUTOCONF_ARGS = \
 
 # LTO is enabled by default, but causes the build to fail. I havent't
 # investigated this yet.
-VKD3D_CFLAGS = -fno-lto
+VKD3D_CFLAGS = -O3 -fno-lto
+VKD3D_i386_CFLAGS = -mpreferred-stack-boundary=2
 VKD3D_LDFLAGS = -static-libgcc $(CROSSLDFLAGS)
 VKD3D_DEPENDS = vulkan-headers spirv-headers
 
