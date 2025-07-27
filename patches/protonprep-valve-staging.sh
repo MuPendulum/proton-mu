@@ -124,7 +124,9 @@ apply_all_in_dir() {
     -W cryptext-CryptExtOpenCER \
     -W wineboot-ProxySettings \
     -W version-VerQueryValue \
-    -W setupapi-DiskSpaceList
+    -W setupapi-DiskSpaceList \
+    -W dsound-EAX \
+    -W dsound-Fast_Mixer
 
     # NOTE: Some patches are applied manually because they -do- apply, just not cleanly, ie with patch fuzz.
     # A detailed list of why the above patches are disabled is listed below:
@@ -141,6 +143,8 @@ apply_all_in_dir() {
     # shell32-Progress_Dialog - relies on kernel32-CopyFileEx
     # shell32-ACE_Viewer - adds a UI tab, not needed, relies on kernel32-CopyFileEx
     # dbghelp-Debug_Symbols - Ubisoft Connect games (3/3 I had installed and could test) will crash inside pe_load_debug_info function with this enabled
+    # dsound-Fast_Mixer - Causes audio crackling in FFXI and PSO:BB
+    # dsound-EAX - relies on dsound-Fast_Mixer
 
     # ntdll-Syscall_Emulation - already applied
     # eventfd_synchronization - already applied
