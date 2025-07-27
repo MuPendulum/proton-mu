@@ -1486,11 +1486,11 @@ redist: all
 	mkdir -p $(REDIST_DIR)
 	rsync --delete -arx $(DST_BASE)/ $(REDIST_DIR)
 	mv $(REDIST_DIR) $(BUILD_NAME)
-	tar -cvzf $(BUILD_NAME).tar.gz $(BUILD_NAME)
-	sha512sum $(BUILD_NAME).tar.gz > $(BUILD_NAME).sha512sum
+	XZ_OPT="-9 -T$(J)" tar -cvJf $(BUILD_NAME).tar.xz $(BUILD_NAME)
+	sha512sum $(BUILD_NAME).tar.xz > $(BUILD_NAME).sha512sum
 	tar -cvaf $(BUILD_NAME).tar.zst $(BUILD_NAME)
 	sha256sum $(BUILD_NAME).* > SHA256SUMS
-	@echo "Proton build available at $(BUILD_NAME).tar.gz"
+	@echo "Proton build available at $(BUILD_NAME).tar.xz"
 
 ##
 ## make module=$dllname module[32,64]
