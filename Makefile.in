@@ -646,6 +646,9 @@ OPENFST_CONFIGURE_ARGS = \
   --with-pic \
   --disable-bin \
 
+OPENFST_CFLAGS = -mno-bmi2
+OPENFST_CXXFLAGS = -mno-bmi2
+
 $(eval $(call rules-source,openfst,$(SRCDIR)/openfst))
 $(eval $(call rules-configure,openfst,i386,unix))
 $(eval $(call rules-configure,openfst,x86_64,unix))
