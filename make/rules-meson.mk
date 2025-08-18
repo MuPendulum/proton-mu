@@ -50,6 +50,7 @@ $$(OBJ)/.$(1)-$(3)-configure: $$($(2)_SRC)/meson.build
 	      --prefix="$$($(2)_$(3)_DST)" \
 	      --libdir="lib/$$($(3)-$(4)_LIBDIR)" \
 	      --buildtype=plain \
+	      -Db_ndebug=true \
 	      --cross-file=$$($(2)_$(3)_OBJ)/cross.txt \
 	      $$($(3)-$(4)_MESON_ARGS) \
 	      $$($(2)_MESON_ARGS) \
