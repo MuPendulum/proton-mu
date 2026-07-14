@@ -1967,6 +1967,8 @@ $(DIST_COPY_TARGETS): | $(DST_DIR)
 all-dist: $(DIST_COPY_TARGETS)
 
 all-dist:
+	GIT_DIR=$(abspath $(SRCDIR)/.git) git describe --tags >/dev/null 2>&1 || \
+	GIT_DIR=$(abspath $(SRCDIR)/.git) git tag Mu-Proton-snapshot >/dev/null 2>&1 || true
 	echo `date '+%s'` `GIT_DIR=$(abspath $(SRCDIR)/.git) git describe --tags` > $(DIST_VERSION)
 
 
