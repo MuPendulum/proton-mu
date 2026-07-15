@@ -147,7 +147,7 @@ ifeq ($(1),wine)
 
 # aarch64 always builds wine with clang directly so build tools do not need to be specified
 $(2)_$(3)_ENV += \
-    CROSSCFLAGS="$$($(2)_$(3)_INCFLAGS) $$($(2)_CFLAGS) $$($(3)_CFLAGS) $$(CFLAGS)" \
+    CROSSCFLAGS="$$($(2)_$(3)_INCFLAGS) $$($(2)_CFLAGS) $$($(3)_CFLAGS) $$(CFLAGS) $$($(2)_$(3)_CFLAGS)" \
     CROSSLDFLAGS="$$($(2)_$(3)-windows_LIBFLAGS) $$($(2)_$(3)_LIBFLAGS) $$($(2)_LDFLAGS) $$($(3)_LDFLAGS) $$(LDFLAGS)" \
     i386_AR="$$(i386-windows_TARGET)-ar" \
     i386_RANLIB="$$(i386-windows_TARGET)-ranlib" \
