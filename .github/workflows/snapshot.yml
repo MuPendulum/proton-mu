@@ -45,29 +45,29 @@ jobs:
         include:
           - name: ${{ needs.version.outputs.full_desc }}-x86_64
             cflags: -O3 -march=nocona -mtune=core-avx2
-            rustflags: -Copt-level=3 -Ctarget-cpu=nocona
+            rustflags: -Copt-level=3 -Ctarget-cpu=nocona -Ccodegen-units=1
 
           - name: ${{ needs.version.outputs.full_desc }}-x86_64_v3
-            cflags: -O3 -march=x86-64-v3 -mtune=core-avx2
-            rustflags: -Copt-level=3 -Ctarget-cpu=nocona
+            cflags: -O3 -march=haswell -mno-rdrnd --param=l1-cache-size=32 --param=avoid-fma-max-bits=128
+            rustflags: -Copt-level=3 -Ctarget-cpu=haswell -Ctarget-feature=-rdrand -Ccodegen-units=1
 
           - name: ${{ needs.version.outputs.full_desc }}-x86_64-wow64
             cflags: -O3 -march=nocona -mtune=core-avx2
-            rustflags: -Copt-level=3 -Ctarget-cpu=nocona
+            rustflags: -Copt-level=3 -Ctarget-cpu=nocona -Ccodegen-units=1
             configure: >-
               --enable-wow64
 
           - name: ${{ needs.version.outputs.full_desc }}-x86_64-llvm
             cflags: -O3 -march=nocona -mtune=core-avx2
-            rustflags: -Copt-level=3 -Ctarget-cpu=nocona
+            rustflags: -Copt-level=3 -Ctarget-cpu=nocona -Ccodegen-units=1
             configure: >-
               --without-nvidia-libs
               --without-tts
               --proton-sdk-image=registry.gitlab.steamos.cloud/proton/steamrt4/sdk/x86_64-llvm:4.0.20260331.220802-2
 
           - name: ${{ needs.version.outputs.full_desc }}-x86_64_v3-llvm
-            cflags: -O3 -march=x86-64-v3 -mtune=core-avx2
-            rustflags: -Copt-level=3 -Ctarget-cpu=nocona
+            cflags: -O3 -march=haswell -mno-rdrnd
+            rustflags: -Copt-level=3 -Ctarget-cpu=haswell -Ctarget-feature=-rdrand -Ccodegen-units=1
             configure: >-
               --without-nvidia-libs
               --without-tts
@@ -75,7 +75,7 @@ jobs:
 
           - name: ${{ needs.version.outputs.full_desc }}-x86_64-llvm-wow64
             cflags: -O3 -march=nocona -mtune=core-avx2
-            rustflags: -Copt-level=3 -Ctarget-cpu=nocona
+            rustflags: -Copt-level=3 -Ctarget-cpu=nocona -Ccodegen-units=1
             configure: >-
               --enable-wow64
               --without-nvidia-libs
