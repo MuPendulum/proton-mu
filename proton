@@ -46,7 +46,7 @@ import protonfixes
 import utilities
 
 
-CURRENT_PREFIX_VERSION="dwproton-11.0-14"
+CURRENT_PREFIX_VERSION="Mu-11.0-100"
 
 PFX="Proton: "
 ld_path_var = "LD_LIBRARY_PATH"
