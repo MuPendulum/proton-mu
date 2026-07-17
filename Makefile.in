@@ -190,7 +190,6 @@ include $(SRC)/steamrtdeps/build-libpcap.mk
 include $(SRC)/steamrtdeps/build-pipewire.mk
 include $(SRC)/steamrtdeps/build-xz.mk
 include $(SRC)/steamrtdeps/build-speex.mk
-include $(SRC)/steamrtdeps/build-speexdsp.mk
 include $(SRC)/steamrtdeps/build-flac.mk
 endif # WITHOUT_STEAMRT_DEPENDS
 
@@ -383,7 +382,6 @@ GST_GOOD_HOST_DEPENDS = gst_orc
 GST_GOOD_DEPENDS += $(LIBXML2_DEPENDENCY)
 
 GST_GOOD_i386_DEPENDS += $(SPEEX_DEPENDENCY)
-GST_GOOD_i386_DEPENDS += $(SPEEXDSP_DEPENDENCY)
 GST_GOOD_i386_DEPENDS += $(FLAC_DEPENDENCY)
 
 $(eval $(call rules-source,gst_good,$(SRCDIR)/gstreamer/subprojects/gst-plugins-good/))
