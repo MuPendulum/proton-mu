@@ -1,0 +1,247 @@
+From c774af5511ce3812cad8ea18b96f470a8def4c26 Mon Sep 17 00:00:00 2001
+From: Anton Baskanov <baskanov@gmail.com>
+Date: Mon, 12 Jan 2026 10:36:40 +0700
+Subject: [PATCH 1/5] dsound: Split resample into separate downsample and
+ upsample functions.
+
+---
+ dlls/dsound/mixer.c | 38 +++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 37 insertions(+), 1 deletion(-)
+
+diff --git a/dlls/dsound/mixer.c b/dlls/dsound/mixer.c
+index d3c6421627c..7d22e9d78b8 100644
+--- a/dlls/dsound/mixer.c
++++ b/dlls/dsound/mixer.c
+@@ -315,7 +315,7 @@ static UINT cp_fields_noresample(IDirectSoundBufferImpl *dsb, UINT count)
+     return count;
+ }
+ 
+-static void resample(LONG64 freq_adjust_num, LONG64 freq_adjust_den, LONG64 freq_acc_start,
++static void downsample(LONG64 freq_adjust_num, LONG64 freq_adjust_den, LONG64 freq_acc_start,
+         UINT dsbfirstep, float firgain, UINT count, float *input, float *output)
+ {
+     UINT i;
+@@ -340,6 +340,42 @@ static void resample(LONG64 freq_adjust_num, LONG64 freq_adjust_den, LONG64 freq
+     }
+ }
+ 
++static void upsample(LONG64 freq_adjust_num, LONG64 freq_adjust_den, LONG64 freq_acc_start,
++        UINT dsbfirstep, float firgain, UINT count, float *input, float *output)
++{
++    UINT i;
++
++    for(i = 0; i < count; ++i) {
++        LONG64 ipos_num = freq_acc_start + i * freq_adjust_num;
++        UINT ipos = ipos_num / freq_adjust_den;
++
++        UINT idx_num = ipos_num % freq_adjust_den * dsbfirstep;
++        UINT idx = dsbfirstep - 1 - idx_num / freq_adjust_den;
++        float rem = 1.0f - idx_num % freq_adjust_den / (float)freq_adjust_den;
++
++        int fir_used = (fir_len - 1 - idx + dsbfirstep - 1) / dsbfirstep;
++
++        int j;
++        float sum = 0.0;
++        float* cache = &input[ipos];
++
++        for (j = 0; j < fir_used; j++)
++            sum += (fir[idx + j * dsbfirstep] * (1.0f - rem) + fir[idx + j * dsbfirstep + 1] * rem) * cache[j];
++        output[i] = sum * firgain;
++    }
++}
++
++static void resample(LONG64 freq_adjust_num, LONG64 freq_adjust_den, LONG64 freq_acc_start,
++        UINT dsbfirstep, float firgain, UINT count, float *input, float *output)
++{
++    if (freq_adjust_num > freq_adjust_den)
++        downsample(freq_adjust_num, freq_adjust_den, freq_acc_start, dsbfirstep, firgain, count,
++                input, output);
++    else
++        upsample(freq_adjust_num, freq_adjust_den, freq_acc_start, dsbfirstep, firgain, count,
++                input, output);
++}
++
+ static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, LONG64 *freqAccNum)
+ {
+     UINT i, channel;
+
+From 28051213b9b5901f30c56f99ac8f32193c40932e Mon Sep 17 00:00:00 2001
+From: Anton Baskanov <baskanov@gmail.com>
+Date: Mon, 12 Jan 2026 10:38:24 +0700
+Subject: [PATCH 2/5] dsound: Don't apply firgain in upsample.
+
+---
+ dlls/dsound/mixer.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/dlls/dsound/mixer.c b/dlls/dsound/mixer.c
+index 7d22e9d78b8..21bd6e4041c 100644
+--- a/dlls/dsound/mixer.c
++++ b/dlls/dsound/mixer.c
+@@ -341,7 +341,7 @@ static void downsample(LONG64 freq_adjust_num, LONG64 freq_adjust_den, LONG64 fr
+ }
+ 
+ static void upsample(LONG64 freq_adjust_num, LONG64 freq_adjust_den, LONG64 freq_acc_start,
+-        UINT dsbfirstep, float firgain, UINT count, float *input, float *output)
++        UINT dsbfirstep, UINT count, float *input, float *output)
+ {
+     UINT i;
+ 
+@@ -361,7 +361,7 @@ static void upsample(LONG64 freq_adjust_num, LONG64 freq_adjust_den, LONG64 freq
+ 
+         for (j = 0; j < fir_used; j++)
+             sum += (fir[idx + j * dsbfirstep] * (1.0f - rem) + fir[idx + j * dsbfirstep + 1] * rem) * cache[j];
+-        output[i] = sum * firgain;
++        output[i] = sum;
+     }
+ }
+ 
+@@ -372,8 +372,8 @@ static void resample(LONG64 freq_adjust_num, LONG64 freq_adjust_den, LONG64 freq
+         downsample(freq_adjust_num, freq_adjust_den, freq_acc_start, dsbfirstep, firgain, count,
+                 input, output);
+     else
+-        upsample(freq_adjust_num, freq_adjust_den, freq_acc_start, dsbfirstep, firgain, count,
+-                input, output);
++        upsample(freq_adjust_num, freq_adjust_den, freq_acc_start, dsbfirstep, count, input,
++                output);
+ }
+ 
+ static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, LONG64 *freqAccNum)
+
+From 99f925a133eb5b33a9d2eddc72c721cb6360a517 Mon Sep 17 00:00:00 2001
+From: Anton Baskanov <baskanov@gmail.com>
+Date: Mon, 12 Jan 2026 10:41:16 +0700
+Subject: [PATCH 3/5] dsound: Don't pass dsbfirstep to upsample.
+
+---
+ dlls/dsound/mixer.c | 13 ++++++-------
+ 1 file changed, 6 insertions(+), 7 deletions(-)
+
+diff --git a/dlls/dsound/mixer.c b/dlls/dsound/mixer.c
+index 21bd6e4041c..f0dff13dbee 100644
+--- a/dlls/dsound/mixer.c
++++ b/dlls/dsound/mixer.c
+@@ -341,7 +341,7 @@ static void downsample(LONG64 freq_adjust_num, LONG64 freq_adjust_den, LONG64 fr
+ }
+ 
+ static void upsample(LONG64 freq_adjust_num, LONG64 freq_adjust_den, LONG64 freq_acc_start,
+-        UINT dsbfirstep, UINT count, float *input, float *output)
++        UINT count, float *input, float *output)
+ {
+     UINT i;
+ 
+@@ -349,18 +349,18 @@ static void upsample(LONG64 freq_adjust_num, LONG64 freq_adjust_den, LONG64 freq
+         LONG64 ipos_num = freq_acc_start + i * freq_adjust_num;
+         UINT ipos = ipos_num / freq_adjust_den;
+ 
+-        UINT idx_num = ipos_num % freq_adjust_den * dsbfirstep;
+-        UINT idx = dsbfirstep - 1 - idx_num / freq_adjust_den;
++        UINT idx_num = ipos_num % freq_adjust_den * fir_step;
++        UINT idx = fir_step - 1 - idx_num / freq_adjust_den;
+         float rem = 1.0f - idx_num % freq_adjust_den / (float)freq_adjust_den;
+ 
+-        int fir_used = (fir_len - 1 - idx + dsbfirstep - 1) / dsbfirstep;
++        int fir_used = (fir_len - 1 - idx + fir_step - 1) / fir_step;
+ 
+         int j;
+         float sum = 0.0;
+         float* cache = &input[ipos];
+ 
+         for (j = 0; j < fir_used; j++)
+-            sum += (fir[idx + j * dsbfirstep] * (1.0f - rem) + fir[idx + j * dsbfirstep + 1] * rem) * cache[j];
++            sum += (fir[idx + j * fir_step] * (1.0f - rem) + fir[idx + j * fir_step + 1] * rem) * cache[j];
+         output[i] = sum;
+     }
+ }
+@@ -372,8 +372,7 @@ static void resample(LONG64 freq_adjust_num, LONG64 freq_adjust_den, LONG64 freq
+         downsample(freq_adjust_num, freq_adjust_den, freq_acc_start, dsbfirstep, firgain, count,
+                 input, output);
+     else
+-        upsample(freq_adjust_num, freq_adjust_den, freq_acc_start, dsbfirstep, count, input,
+-                output);
++        upsample(freq_adjust_num, freq_adjust_den, freq_acc_start, count, input, output);
+ }
+ 
+ static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, LONG64 *freqAccNum)
+
+From cec8523fa66caf100e128193d502b08dc6910c2b Mon Sep 17 00:00:00 2001
+From: Anton Baskanov <baskanov@gmail.com>
+Date: Mon, 12 Jan 2026 14:35:44 +0700
+Subject: [PATCH 4/5] dsound: Use a fixed upsampling loop boundary.
+
+---
+ dlls/dsound/fir.h   | 2 ++
+ dlls/dsound/mixer.c | 4 +---
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/dlls/dsound/fir.h b/dlls/dsound/fir.h
+index f317d19ba3b..24d93645d12 100644
+--- a/dlls/dsound/fir.h
++++ b/dlls/dsound/fir.h
+@@ -87,6 +87,7 @@ int main()
+     fprintf(stderr, "status %s\n", get_pm_status_str(output.status));
+ 
+     printf("static const int fir_len = %d;\n", fir_len);
++    printf("static const int fir_width = %d;\n", fir_width);
+     printf("static const int fir_step = %d;\n", fir_step);
+     printf("static const float fir[] = {");
+     for (i = 0; i < fir_len; ++i)
+@@ -104,6 +105,7 @@ int main()
+ }
+ */
+ static const int fir_len = 8193;
++static const int fir_width = 64;
+ static const int fir_step = 128;
+ static const float fir[] = {
+      0.0000000000e+00, -2.2207222127e-04,  1.4025302043e-05,  1.3443390954e-05,
+diff --git a/dlls/dsound/mixer.c b/dlls/dsound/mixer.c
+index f0dff13dbee..a89ff021184 100644
+--- a/dlls/dsound/mixer.c
++++ b/dlls/dsound/mixer.c
+@@ -353,13 +353,11 @@ static void upsample(LONG64 freq_adjust_num, LONG64 freq_adjust_den, LONG64 freq
+         UINT idx = fir_step - 1 - idx_num / freq_adjust_den;
+         float rem = 1.0f - idx_num % freq_adjust_den / (float)freq_adjust_den;
+ 
+-        int fir_used = (fir_len - 1 - idx + fir_step - 1) / fir_step;
+-
+         int j;
+         float sum = 0.0;
+         float* cache = &input[ipos];
+ 
+-        for (j = 0; j < fir_used; j++)
++        for (j = 0; j < fir_width; j++)
+             sum += (fir[idx + j * fir_step] * (1.0f - rem) + fir[idx + j * fir_step + 1] * rem) * cache[j];
+         output[i] = sum;
+     }
+
+From 31f6f9260db0525670d94800d3e9ae9956366a8a Mon Sep 17 00:00:00 2001
+From: Anton Baskanov <baskanov@gmail.com>
+Date: Thu, 15 Jan 2026 14:50:33 +0700
+Subject: [PATCH 5/5] dsound: Don't invert the remainder twice in upsample.
+
+---
+ dlls/dsound/mixer.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/dlls/dsound/mixer.c b/dlls/dsound/mixer.c
+index a89ff021184..a0f38b126b9 100644
+--- a/dlls/dsound/mixer.c
++++ b/dlls/dsound/mixer.c
+@@ -351,14 +351,15 @@ static void upsample(LONG64 freq_adjust_num, LONG64 freq_adjust_den, LONG64 freq
+ 
+         UINT idx_num = ipos_num % freq_adjust_den * fir_step;
+         UINT idx = fir_step - 1 - idx_num / freq_adjust_den;
+-        float rem = 1.0f - idx_num % freq_adjust_den / (float)freq_adjust_den;
++        float rem_inv = idx_num % freq_adjust_den / (float)freq_adjust_den;
++        float rem = 1.0f - rem_inv;
+ 
+         int j;
+         float sum = 0.0;
+         float* cache = &input[ipos];
+ 
+         for (j = 0; j < fir_width; j++)
+-            sum += (fir[idx + j * fir_step] * (1.0f - rem) + fir[idx + j * fir_step + 1] * rem) * cache[j];
++            sum += (fir[idx + j * fir_step] * rem_inv + fir[idx + j * fir_step + 1] * rem) * cache[j];
+         output[i] = sum;
+     }
+ }

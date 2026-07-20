@@ -1,0 +1,174 @@
+From 0d3c6183d3cf7782399b6549588edb122e5506c3 Mon Sep 17 00:00:00 2001
+From: Anton Baskanov <baskanov@gmail.com>
+Date: Tue, 7 Jul 2026 12:26:53 +0700
+Subject: [PATCH] dsound: Move the get functions to mixer.c.
+
+---
+ dlls/dsound/dsound_convert.c | 64 ------------------------------------
+ dlls/dsound/dsound_private.h |  2 --
+ dlls/dsound/mixer.c          | 64 ++++++++++++++++++++++++++++++++++++
+ 3 files changed, 64 insertions(+), 66 deletions(-)
+
+diff --git a/dlls/dsound/dsound_convert.c b/dlls/dsound/dsound_convert.c
+index 3160a4ddefa..4f23f2b5929 100644
+--- a/dlls/dsound/dsound_convert.c
++++ b/dlls/dsound/dsound_convert.c
+@@ -47,70 +47,6 @@
+ 
+ WINE_DEFAULT_DEBUG_CHANNEL(dsound);
+ 
+-static void get8(const IDirectSoundBufferImpl *dsb, BYTE *base, float *dst, unsigned samples, DWORD channel)
+-{
+-    DWORD channels = dsb->pwfx->nChannels;
+-    const BYTE *buf = base + channel;
+-    int i;
+-
+-    for (i = 0; i < samples; ++i)
+-        dst[i] = (buf[i * channels] - 0x80) / (float)0x80;
+-}
+-
+-static void get16(const IDirectSoundBufferImpl *dsb, BYTE *base, float *dst, unsigned samples, DWORD channel)
+-{
+-    DWORD channels = dsb->pwfx->nChannels;
+-    const BYTE *buf = base + 2 * channel;
+-    const SHORT *sbuf = (const SHORT*)(buf);
+-    int i;
+-
+-    for (i = 0; i < samples; ++i)
+-        dst[i] = sbuf[i * channels] / (float)0x8000;
+-}
+-
+-static void get24(const IDirectSoundBufferImpl *dsb, BYTE *base, float *dst, unsigned samples, DWORD channel)
+-{
+-    DWORD channels = dsb->pwfx->nChannels;
+-    const BYTE *buf = base + 3 * channel;
+-    int i;
+-
+-    for (i = 0; i < samples; ++i) {
+-        /* The next expression deliberately has an overflow for buf[2] >= 0x80,
+-           this is how negative values are made.
+-         */
+-        LONG sample =
+-                (buf[i * channels * 3 + 0] << 8) |
+-                (buf[i * channels * 3 + 1] << 16) |
+-                (buf[i * channels * 3 + 2] << 24);
+-        dst[i] = sample / (float)0x80000000U;
+-    }
+-}
+-
+-static void get32(const IDirectSoundBufferImpl *dsb, BYTE *base, float *dst, unsigned samples, DWORD channel)
+-{
+-    DWORD channels = dsb->pwfx->nChannels;
+-    const BYTE *buf = base + 4 * channel;
+-    const LONG *sbuf = (const LONG*)(buf);
+-    int i;
+-
+-    for (i = 0; i < samples; ++i)
+-        dst[i] = sbuf[i * channels] / (float)0x80000000U;
+-}
+-
+-const bitsgetfunc getbpp[4] = {get8, get16, get24, get32};
+-
+-void getieee32(const IDirectSoundBufferImpl *dsb, BYTE *base, float *dst, unsigned samples, DWORD channel)
+-{
+-    DWORD channels = dsb->pwfx->nChannels;
+-    const BYTE *buf = base + 4 * channel;
+-    const float *sbuf = (const float*)(buf);
+-    int i;
+-
+-    for (i = 0; i < samples; ++i)
+-        /* The value will be clipped later, when put into some non-float buffer */
+-        dst[i] = sbuf[i * channels];
+-}
+-
+ void putieee32(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value)
+ {
+     BYTE *buf = (BYTE *)dsb->device->tmp_buffer;
+diff --git a/dlls/dsound/dsound_private.h b/dlls/dsound/dsound_private.h
+index 4902f7c019f..2e8d105221b 100644
+--- a/dlls/dsound/dsound_private.h
++++ b/dlls/dsound/dsound_private.h
+@@ -45,8 +45,6 @@ typedef struct DirectSoundDevice             DirectSoundDevice;
+ /* dsound_convert.h */
+ typedef void (*bitsgetfunc)(const IDirectSoundBufferImpl *dsb, BYTE *base, float *dst, unsigned samples, DWORD channel);
+ typedef void (*bitsputfunc)(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value);
+-extern const bitsgetfunc getbpp[4];
+-void getieee32(const IDirectSoundBufferImpl *dsb, BYTE *base, float *dst, unsigned samples, DWORD channel);
+ void putieee32(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value);
+ void putieee32_sum(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value);
+ void mixieee32(float *src, float *dst, unsigned samples);
+diff --git a/dlls/dsound/mixer.c b/dlls/dsound/mixer.c
+index fca7f09d6b6..d853a1e6b59 100644
+--- a/dlls/dsound/mixer.c
++++ b/dlls/dsound/mixer.c
+@@ -99,6 +99,70 @@ void DSOUND_AmpFactorToVolPan(PDSVOLUMEPAN volpan)
+     TRACE("Vol=%ld Pan=%ld\n", volpan->lVolume, volpan->lPan);
+ }
+ 
++static void get8(const IDirectSoundBufferImpl *dsb, BYTE *base, float *dst, unsigned samples, DWORD channel)
++{
++    DWORD channels = dsb->pwfx->nChannels;
++    const BYTE *buf = base + channel;
++    int i;
++
++    for (i = 0; i < samples; ++i)
++        dst[i] = (buf[i * channels] - 0x80) / (float)0x80;
++}
++
++static void get16(const IDirectSoundBufferImpl *dsb, BYTE *base, float *dst, unsigned samples, DWORD channel)
++{
++    DWORD channels = dsb->pwfx->nChannels;
++    const BYTE *buf = base + 2 * channel;
++    const SHORT *sbuf = (const SHORT*)(buf);
++    int i;
++
++    for (i = 0; i < samples; ++i)
++        dst[i] = sbuf[i * channels] / (float)0x8000;
++}
++
++static void get24(const IDirectSoundBufferImpl *dsb, BYTE *base, float *dst, unsigned samples, DWORD channel)
++{
++    DWORD channels = dsb->pwfx->nChannels;
++    const BYTE *buf = base + 3 * channel;
++    int i;
++
++    for (i = 0; i < samples; ++i) {
++        /* The next expression deliberately has an overflow for buf[2] >= 0x80,
++           this is how negative values are made.
++         */
++        LONG sample =
++                (buf[i * channels * 3 + 0] << 8) |
++                (buf[i * channels * 3 + 1] << 16) |
++                (buf[i * channels * 3 + 2] << 24);
++        dst[i] = sample / (float)0x80000000U;
++    }
++}
++
++static void get32(const IDirectSoundBufferImpl *dsb, BYTE *base, float *dst, unsigned samples, DWORD channel)
++{
++    DWORD channels = dsb->pwfx->nChannels;
++    const BYTE *buf = base + 4 * channel;
++    const LONG *sbuf = (const LONG*)(buf);
++    int i;
++
++    for (i = 0; i < samples; ++i)
++        dst[i] = sbuf[i * channels] / (float)0x80000000U;
++}
++
++static const bitsgetfunc getbpp[4] = {get8, get16, get24, get32};
++
++static void getieee32(const IDirectSoundBufferImpl *dsb, BYTE *base, float *dst, unsigned samples, DWORD channel)
++{
++    DWORD channels = dsb->pwfx->nChannels;
++    const BYTE *buf = base + 4 * channel;
++    const float *sbuf = (const float*)(buf);
++    int i;
++
++    for (i = 0; i < samples; ++i)
++        /* The value will be clipped later, when put into some non-float buffer */
++        dst[i] = sbuf[i * channels];
++}
++
+ /**
+  * Recalculate the size for temporary buffer, and new writelead
+  * Should be called when one of the following things occur:

@@ -1,0 +1,140 @@
+From 2c4f12e45a6d965e85ef7dbfb27a00372e2ae33b Mon Sep 17 00:00:00 2001
+From: Anton Baskanov <baskanov@gmail.com>
+Date: Thu, 15 Jan 2026 15:55:44 +0700
+Subject: [PATCH 1/5] dsound: Remove the unused freqneeded field.
+
+---
+ dlls/dsound/dsound_private.h | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/dlls/dsound/dsound_private.h b/dlls/dsound/dsound_private.h
+index d579b9400e4..a9ddac5cf74 100644
+--- a/dlls/dsound/dsound_private.h
++++ b/dlls/dsound/dsound_private.h
+@@ -146,7 +146,6 @@ struct IDirectSoundBufferImpl
+     DSVOLUMEPAN                 volpan;
+     DSBUFFERDESC                dsbd;
+     /* used for frequency conversion (PerfectPitch) */
+-    ULONG                       freqneeded;
+     DWORD                       firstep;
+     float                       firgain;
+     LONG64                      freqAdjustNum,freqAdjustDen;
+
+From b9ad9785f5cab05e20e5712978bb5b80fe5cdb52 Mon Sep 17 00:00:00 2001
+From: Anton Baskanov <baskanov@gmail.com>
+Date: Sun, 11 Jan 2026 22:46:19 +0700
+Subject: [PATCH 2/5] dsound: Don't use double-precision arithmetic in the
+ resampler.
+
+---
+ dlls/dsound/mixer.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/dlls/dsound/mixer.c b/dlls/dsound/mixer.c
+index 623c15496a8..260954444a3 100644
+--- a/dlls/dsound/mixer.c
++++ b/dlls/dsound/mixer.c
+@@ -377,11 +377,11 @@ static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, LONG64 *
+         UINT ipos = int_fir_steps / dsbfirstep;
+ 
+         UINT idx = (ipos + 1) * dsbfirstep - int_fir_steps - 1;
+-        float rem = int_fir_steps + 1.0 - total_fir_steps;
++        float rem = int_fir_steps + 1.0f - total_fir_steps;
+ 
+         int fir_used = 0;
+         while (idx < fir_len - 1) {
+-            fir_copy[fir_used++] = fir[idx] * (1.0 - rem) + fir[idx + 1] * rem;
++            fir_copy[fir_used++] = fir[idx] * (1.0f - rem) + fir[idx + 1] * rem;
+             idx += dsb->firstep;
+         }
+ 
+
+From 39a935b5717e5ac96fc41e2e0b39fa72819b5898 Mon Sep 17 00:00:00 2001
+From: Anton Baskanov <baskanov@gmail.com>
+Date: Mon, 12 Jan 2026 00:15:48 +0700
+Subject: [PATCH 3/5] dsound: Do the subtraction before converting to float to
+ improve rem precision.
+
+---
+ dlls/dsound/mixer.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/dlls/dsound/mixer.c b/dlls/dsound/mixer.c
+index 260954444a3..c62d198ef0b 100644
+--- a/dlls/dsound/mixer.c
++++ b/dlls/dsound/mixer.c
+@@ -372,12 +372,12 @@ static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, LONG64 *
+     }
+ 
+     for(i = 0; i < count; ++i) {
+-        UINT int_fir_steps = (freqAcc_start + i * dsb->freqAdjustNum) * dsbfirstep / dsb->freqAdjustDen;
+-        float total_fir_steps = (freqAcc_start + i * dsb->freqAdjustNum) * dsbfirstep / (float)dsb->freqAdjustDen;
++        LONG64 fir_steps_num = (freqAcc_start + i * dsb->freqAdjustNum) * dsbfirstep;
++        UINT int_fir_steps = fir_steps_num / dsb->freqAdjustDen;
+         UINT ipos = int_fir_steps / dsbfirstep;
+ 
+         UINT idx = (ipos + 1) * dsbfirstep - int_fir_steps - 1;
+-        float rem = int_fir_steps + 1.0f - total_fir_steps;
++        float rem = 1.0f - (fir_steps_num - int_fir_steps * dsb->freqAdjustDen) / (float)dsb->freqAdjustDen;
+ 
+         int fir_used = 0;
+         while (idx < fir_len - 1) {
+
+From 217c8a8c88256da6e8233ed802661682584feaf5 Mon Sep 17 00:00:00 2001
+From: Anton Baskanov <baskanov@gmail.com>
+Date: Mon, 12 Jan 2026 00:27:15 +0700
+Subject: [PATCH 4/5] dsound: Use the modulus operator instead of
+ divide-multiply-subtract.
+
+---
+ dlls/dsound/mixer.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/dlls/dsound/mixer.c b/dlls/dsound/mixer.c
+index c62d198ef0b..5da79e02a97 100644
+--- a/dlls/dsound/mixer.c
++++ b/dlls/dsound/mixer.c
+@@ -376,8 +376,8 @@ static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, LONG64 *
+         UINT int_fir_steps = fir_steps_num / dsb->freqAdjustDen;
+         UINT ipos = int_fir_steps / dsbfirstep;
+ 
+-        UINT idx = (ipos + 1) * dsbfirstep - int_fir_steps - 1;
+-        float rem = 1.0f - (fir_steps_num - int_fir_steps * dsb->freqAdjustDen) / (float)dsb->freqAdjustDen;
++        UINT idx = dsbfirstep - 1 - int_fir_steps % dsbfirstep;
++        float rem = 1.0f - fir_steps_num % dsb->freqAdjustDen / (float)dsb->freqAdjustDen;
+ 
+         int fir_used = 0;
+         while (idx < fir_len - 1) {
+
+From 445879590d9ef4a8f27065065a1f31e3c70a55df Mon Sep 17 00:00:00 2001
+From: Anton Baskanov <baskanov@gmail.com>
+Date: Mon, 12 Jan 2026 12:40:56 +0700
+Subject: [PATCH 5/5] dsound: Multiply by dsbfirstep after calculating the
+ modulus.
+
+---
+ dlls/dsound/mixer.c | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/dlls/dsound/mixer.c b/dlls/dsound/mixer.c
+index 5da79e02a97..b90a7e98469 100644
+--- a/dlls/dsound/mixer.c
++++ b/dlls/dsound/mixer.c
+@@ -372,12 +372,12 @@ static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, LONG64 *
+     }
+ 
+     for(i = 0; i < count; ++i) {
+-        LONG64 fir_steps_num = (freqAcc_start + i * dsb->freqAdjustNum) * dsbfirstep;
+-        UINT int_fir_steps = fir_steps_num / dsb->freqAdjustDen;
+-        UINT ipos = int_fir_steps / dsbfirstep;
++        LONG64 ipos_num = freqAcc_start + i * dsb->freqAdjustNum;
++        UINT ipos = ipos_num / dsb->freqAdjustDen;
+ 
+-        UINT idx = dsbfirstep - 1 - int_fir_steps % dsbfirstep;
+-        float rem = 1.0f - fir_steps_num % dsb->freqAdjustDen / (float)dsb->freqAdjustDen;
++        UINT idx_num = ipos_num % dsb->freqAdjustDen * dsbfirstep;
++        UINT idx = dsbfirstep - 1 - idx_num / dsb->freqAdjustDen;
++        float rem = 1.0f - idx_num % dsb->freqAdjustDen / (float)dsb->freqAdjustDen;
+ 
+         int fir_used = 0;
+         while (idx < fir_len - 1) {

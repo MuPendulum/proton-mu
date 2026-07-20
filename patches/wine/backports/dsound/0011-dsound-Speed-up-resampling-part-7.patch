@@ -1,0 +1,501 @@
+From a6f35293f20ce8f6aace9fdad5f5ed8ad32a90fd Mon Sep 17 00:00:00 2001
+From: Anton Baskanov <baskanov@gmail.com>
+Date: Thu, 26 Feb 2026 10:30:15 +0700
+Subject: [PATCH 1/6] dsound: Name the parameters of bitsgetfunc and
+ bitsputfunc.
+
+---
+ dlls/dsound/dsound_private.h | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/dlls/dsound/dsound_private.h b/dlls/dsound/dsound_private.h
+index 8f6cd13b0b1..fd01168e6cf 100644
+--- a/dlls/dsound/dsound_private.h
++++ b/dlls/dsound/dsound_private.h
+@@ -43,8 +43,8 @@ typedef struct IDirectSoundBufferImpl        IDirectSoundBufferImpl;
+ typedef struct DirectSoundDevice             DirectSoundDevice;
+ 
+ /* dsound_convert.h */
+-typedef float (*bitsgetfunc)(const IDirectSoundBufferImpl *, BYTE *, DWORD);
+-typedef void (*bitsputfunc)(const IDirectSoundBufferImpl *, DWORD, DWORD, float);
++typedef float (*bitsgetfunc)(const IDirectSoundBufferImpl *dsb, BYTE *base, DWORD channel);
++typedef void (*bitsputfunc)(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value);
+ extern const bitsgetfunc getbpp[5];
+ void putieee32(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value);
+ void putieee32_sum(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value);
+
+From 94e98eadaf4d40dc5ce3e21ce11f8749c03b2c8b Mon Sep 17 00:00:00 2001
+From: Anton Baskanov <baskanov@gmail.com>
+Date: Sun, 14 Jun 2026 19:26:17 +0700
+Subject: [PATCH 2/6] dsound: Remove getieee32 from the getbpp array.
+
+---
+ dlls/dsound/dsound_convert.c | 6 +++---
+ dlls/dsound/dsound_private.h | 3 ++-
+ dlls/dsound/mixer.c          | 2 +-
+ 3 files changed, 6 insertions(+), 5 deletions(-)
+
+diff --git a/dlls/dsound/dsound_convert.c b/dlls/dsound/dsound_convert.c
+index c1acc95652c..5672fc7acbc 100644
+--- a/dlls/dsound/dsound_convert.c
++++ b/dlls/dsound/dsound_convert.c
+@@ -89,7 +89,9 @@ static float get32(const IDirectSoundBufferImpl *dsb, BYTE *base, DWORD channel)
+     return sample / (float)0x80000000U;
+ }
+ 
+-static float getieee32(const IDirectSoundBufferImpl *dsb, BYTE *base, DWORD channel)
++const bitsgetfunc getbpp[4] = {get8, get16, get24, get32};
++
++float getieee32(const IDirectSoundBufferImpl *dsb, BYTE *base, DWORD channel)
+ {
+     const BYTE *buf = base + 4 * channel;
+     const float *sbuf = (const float*)(buf);
+@@ -97,8 +99,6 @@ static float getieee32(const IDirectSoundBufferImpl *dsb, BYTE *base, DWORD chan
+     return *sbuf;
+ }
+ 
+-const bitsgetfunc getbpp[5] = {get8, get16, get24, get32, getieee32};
+-
+ float get_mono(const IDirectSoundBufferImpl *dsb, BYTE *base, DWORD channel)
+ {
+     DWORD channels = dsb->pwfx->nChannels;
+diff --git a/dlls/dsound/dsound_private.h b/dlls/dsound/dsound_private.h
+index fd01168e6cf..1a68964a984 100644
+--- a/dlls/dsound/dsound_private.h
++++ b/dlls/dsound/dsound_private.h
+@@ -45,7 +45,8 @@ typedef struct DirectSoundDevice             DirectSoundDevice;
+ /* dsound_convert.h */
+ typedef float (*bitsgetfunc)(const IDirectSoundBufferImpl *dsb, BYTE *base, DWORD channel);
+ typedef void (*bitsputfunc)(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value);
+-extern const bitsgetfunc getbpp[5];
++extern const bitsgetfunc getbpp[4];
++float getieee32(const IDirectSoundBufferImpl *dsb, BYTE *base, DWORD channel);
+ void putieee32(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value);
+ void putieee32_sum(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value);
+ void mixieee32(float *src, float *dst, unsigned samples);
+diff --git a/dlls/dsound/mixer.c b/dlls/dsound/mixer.c
+index c8d0ea369d2..56e7b3b95c6 100644
+--- a/dlls/dsound/mixer.c
++++ b/dlls/dsound/mixer.c
+@@ -137,7 +137,7 @@ void DSOUND_RecalcFormat(IDirectSoundBufferImpl *dsb)
+ 		dsb->freqAccNum = (dsb->freqAccNum * (LONG64)dsb->freqAdjustDen +
+ 				oldFreqAdjustDen / 2) / oldFreqAdjustDen;
+ 
+-	dsb->get_aux = ieee ? getbpp[4] : getbpp[dsb->pwfx->wBitsPerSample/8 - 1];
++	dsb->get_aux = ieee ? getieee32 : getbpp[dsb->pwfx->wBitsPerSample/8 - 1];
+ 	dsb->put_aux = putieee32;
+ 
+ 	dsb->get = dsb->get_aux;
+
+From 807f4d463d194fe10e3dc99077526b25515fde16 Mon Sep 17 00:00:00 2001
+From: Anton Baskanov <baskanov@gmail.com>
+Date: Sun, 14 Jun 2026 07:21:09 +0700
+Subject: [PATCH 3/6] dsound: Get rid of endianness conversion.
+
+---
+ dlls/dsound/dsound_convert.c | 14 ++------------
+ 1 file changed, 2 insertions(+), 12 deletions(-)
+
+diff --git a/dlls/dsound/dsound_convert.c b/dlls/dsound/dsound_convert.c
+index 5672fc7acbc..2a5878b2c95 100644
+--- a/dlls/dsound/dsound_convert.c
++++ b/dlls/dsound/dsound_convert.c
+@@ -47,14 +47,6 @@
+ 
+ WINE_DEFAULT_DEBUG_CHANNEL(dsound);
+ 
+-#ifdef WORDS_BIGENDIAN
+-#define le16(x) RtlUshortByteSwap((x))
+-#define le32(x) RtlUlongByteSwap((x))
+-#else
+-#define le16(x) (x)
+-#define le32(x) (x)
+-#endif
+-
+ static float get8(const IDirectSoundBufferImpl *dsb, BYTE *base, DWORD channel)
+ {
+     const BYTE *buf = base + channel;
+@@ -65,8 +57,7 @@ static float get16(const IDirectSoundBufferImpl *dsb, BYTE *base, DWORD channel)
+ {
+     const BYTE *buf = base + 2 * channel;
+     const SHORT *sbuf = (const SHORT*)(buf);
+-    SHORT sample = (SHORT)le16(*sbuf);
+-    return sample / (float)0x8000;
++    return sbuf[0] / (float)0x8000;
+ }
+ 
+ static float get24(const IDirectSoundBufferImpl *dsb, BYTE *base, DWORD channel)
+@@ -85,8 +76,7 @@ static float get32(const IDirectSoundBufferImpl *dsb, BYTE *base, DWORD channel)
+ {
+     const BYTE *buf = base + 4 * channel;
+     const LONG *sbuf = (const LONG*)(buf);
+-    LONG sample = le32(*sbuf);
+-    return sample / (float)0x80000000U;
++    return sbuf[0] / (float)0x80000000U;
+ }
+ 
+ const bitsgetfunc getbpp[4] = {get8, get16, get24, get32};
+
+From a6a2de7eacd21e5f8cddeb59c7ffa8cd8c41a47a Mon Sep 17 00:00:00 2001
+From: Anton Baskanov <baskanov@gmail.com>
+Date: Fri, 26 Jun 2026 15:04:21 +0700
+Subject: [PATCH 4/6] dsound: Downmix to mono after resampling and remove
+ get_mono.
+
+---
+ dlls/dsound/dsound_convert.c | 18 ++++++------------
+ dlls/dsound/dsound_private.h |  2 +-
+ dlls/dsound/mixer.c          |  5 +++--
+ 3 files changed, 10 insertions(+), 15 deletions(-)
+
+diff --git a/dlls/dsound/dsound_convert.c b/dlls/dsound/dsound_convert.c
+index 2a5878b2c95..d6c86f1959d 100644
+--- a/dlls/dsound/dsound_convert.c
++++ b/dlls/dsound/dsound_convert.c
+@@ -89,18 +89,6 @@ float getieee32(const IDirectSoundBufferImpl *dsb, BYTE *base, DWORD channel)
+     return *sbuf;
+ }
+ 
+-float get_mono(const IDirectSoundBufferImpl *dsb, BYTE *base, DWORD channel)
+-{
+-    DWORD channels = dsb->pwfx->nChannels;
+-    DWORD c;
+-    float val = 0;
+-    /* XXX: does Windows include LFE into the mix? */
+-    for (c = 0; c < channels; c++)
+-        val += dsb->get_aux(dsb, base, c);
+-    val /= channels;
+-    return val;
+-}
+-
+ void putieee32(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value)
+ {
+     BYTE *buf = (BYTE *)dsb->device->tmp_buffer;
+@@ -164,6 +152,12 @@ void put_stereo2surround51(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD c
+     }
+ }
+ 
++void put_mono(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value)
++{
++    /* XXX: does Windows include LFE into the mix? */
++    dsb->put_aux(dsb, pos, 0, value);
++}
++
+ void put_surround512stereo(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value)
+ {
+     /* based on analyzing a recording of a dsound downmix */
+diff --git a/dlls/dsound/dsound_private.h b/dlls/dsound/dsound_private.h
+index 1a68964a984..96f351bf158 100644
+--- a/dlls/dsound/dsound_private.h
++++ b/dlls/dsound/dsound_private.h
+@@ -170,12 +170,12 @@ struct IDirectSoundBufferImpl
+     struct list entry;
+ };
+ 
+-float get_mono(const IDirectSoundBufferImpl *dsb, BYTE *base, DWORD channel);
+ void put_mono2stereo(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value);
+ void put_mono2quad(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value);
+ void put_stereo2quad(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value);
+ void put_mono2surround51(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value);
+ void put_stereo2surround51(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value);
++void put_mono(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value);
+ void put_surround512stereo(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value);
+ void put_surround712stereo(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value);
+ void put_quad2stereo(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value);
+diff --git a/dlls/dsound/mixer.c b/dlls/dsound/mixer.c
+index 56e7b3b95c6..6bded757739 100644
+--- a/dlls/dsound/mixer.c
++++ b/dlls/dsound/mixer.c
+@@ -164,8 +164,9 @@ void DSOUND_RecalcFormat(IDirectSoundBufferImpl *dsb)
+ 	}
+ 	else if (ochannels == 1)
+ 	{
+-		dsb->mix_channels = 1;
+-		dsb->get = get_mono;
++		dsb->mix_channels = ichannels;
++		dsb->put = put_mono;
++		dsb->put_aux = putieee32_sum;
+ 	}
+ 	else if (ichannels == 2 && ochannels == 4)
+ 	{
+
+From af11dff2ec6490b9898104115d430fc65dc57aeb Mon Sep 17 00:00:00 2001
+From: Anton Baskanov <baskanov@gmail.com>
+Date: Fri, 5 Jun 2026 15:22:55 +0700
+Subject: [PATCH 5/6] dsound: Get rid of get_aux and read the values directly.
+
+---
+ dlls/dsound/dsound_private.h | 2 +-
+ dlls/dsound/mixer.c          | 3 +--
+ 2 files changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/dlls/dsound/dsound_private.h b/dlls/dsound/dsound_private.h
+index 96f351bf158..013b704272a 100644
+--- a/dlls/dsound/dsound_private.h
++++ b/dlls/dsound/dsound_private.h
+@@ -162,7 +162,7 @@ struct IDirectSoundBufferImpl
+     BOOL                        ds3db_need_recalc;
+     /* Used for bit depth conversion */
+     int                         mix_channels;
+-    bitsgetfunc get, get_aux;
++    bitsgetfunc get;
+     bitsputfunc put, put_aux;
+     int                         num_filters;
+     DSFilter*                   filters;
+diff --git a/dlls/dsound/mixer.c b/dlls/dsound/mixer.c
+index 6bded757739..7234394e8df 100644
+--- a/dlls/dsound/mixer.c
++++ b/dlls/dsound/mixer.c
+@@ -137,10 +137,9 @@ void DSOUND_RecalcFormat(IDirectSoundBufferImpl *dsb)
+ 		dsb->freqAccNum = (dsb->freqAccNum * (LONG64)dsb->freqAdjustDen +
+ 				oldFreqAdjustDen / 2) / oldFreqAdjustDen;
+ 
+-	dsb->get_aux = ieee ? getieee32 : getbpp[dsb->pwfx->wBitsPerSample/8 - 1];
+ 	dsb->put_aux = putieee32;
+ 
+-	dsb->get = dsb->get_aux;
++	dsb->get = ieee ? getieee32 : getbpp[dsb->pwfx->wBitsPerSample/8 - 1];
+ 	dsb->put = dsb->put_aux;
+ 
+ 	if (ichannels == ochannels)
+
+From 904360e40f59be539332a3bc93e021614844fbba Mon Sep 17 00:00:00 2001
+From: Anton Baskanov <baskanov@gmail.com>
+Date: Sun, 14 Jun 2026 07:23:44 +0700
+Subject: [PATCH 6/6] dsound: Get all channel samples in one go.
+
+Inspired by a patch by Matteo Bruni, which was in turn inspired by a
+patch by Giovanni Mascellani.
+---
+ dlls/dsound/dsound_convert.c | 56 ++++++++++++++++++---------
+ dlls/dsound/dsound_private.h |  4 +-
+ dlls/dsound/mixer.c          | 74 ++++++++++++++++++++++++++----------
+ 3 files changed, 95 insertions(+), 39 deletions(-)
+
+diff --git a/dlls/dsound/dsound_convert.c b/dlls/dsound/dsound_convert.c
+index d6c86f1959d..3160a4ddefa 100644
+--- a/dlls/dsound/dsound_convert.c
++++ b/dlls/dsound/dsound_convert.c
+@@ -47,46 +47,68 @@
+ 
+ WINE_DEFAULT_DEBUG_CHANNEL(dsound);
+ 
+-static float get8(const IDirectSoundBufferImpl *dsb, BYTE *base, DWORD channel)
++static void get8(const IDirectSoundBufferImpl *dsb, BYTE *base, float *dst, unsigned samples, DWORD channel)
+ {
++    DWORD channels = dsb->pwfx->nChannels;
+     const BYTE *buf = base + channel;
+-    return (buf[0] - 0x80) / (float)0x80;
++    int i;
++
++    for (i = 0; i < samples; ++i)
++        dst[i] = (buf[i * channels] - 0x80) / (float)0x80;
+ }
+ 
+-static float get16(const IDirectSoundBufferImpl *dsb, BYTE *base, DWORD channel)
++static void get16(const IDirectSoundBufferImpl *dsb, BYTE *base, float *dst, unsigned samples, DWORD channel)
+ {
++    DWORD channels = dsb->pwfx->nChannels;
+     const BYTE *buf = base + 2 * channel;
+     const SHORT *sbuf = (const SHORT*)(buf);
+-    return sbuf[0] / (float)0x8000;
++    int i;
++
++    for (i = 0; i < samples; ++i)
++        dst[i] = sbuf[i * channels] / (float)0x8000;
+ }
+ 
+-static float get24(const IDirectSoundBufferImpl *dsb, BYTE *base, DWORD channel)
++static void get24(const IDirectSoundBufferImpl *dsb, BYTE *base, float *dst, unsigned samples, DWORD channel)
+ {
+-    LONG sample;
++    DWORD channels = dsb->pwfx->nChannels;
+     const BYTE *buf = base + 3 * channel;
+-
+-    /* The next expression deliberately has an overflow for buf[2] >= 0x80,
+-       this is how negative values are made.
+-     */
+-    sample = (buf[0] << 8) | (buf[1] << 16) | (buf[2] << 24);
+-    return sample / (float)0x80000000U;
++    int i;
++
++    for (i = 0; i < samples; ++i) {
++        /* The next expression deliberately has an overflow for buf[2] >= 0x80,
++           this is how negative values are made.
++         */
++        LONG sample =
++                (buf[i * channels * 3 + 0] << 8) |
++                (buf[i * channels * 3 + 1] << 16) |
++                (buf[i * channels * 3 + 2] << 24);
++        dst[i] = sample / (float)0x80000000U;
++    }
+ }
+ 
+-static float get32(const IDirectSoundBufferImpl *dsb, BYTE *base, DWORD channel)
++static void get32(const IDirectSoundBufferImpl *dsb, BYTE *base, float *dst, unsigned samples, DWORD channel)
+ {
++    DWORD channels = dsb->pwfx->nChannels;
+     const BYTE *buf = base + 4 * channel;
+     const LONG *sbuf = (const LONG*)(buf);
+-    return sbuf[0] / (float)0x80000000U;
++    int i;
++
++    for (i = 0; i < samples; ++i)
++        dst[i] = sbuf[i * channels] / (float)0x80000000U;
+ }
+ 
+ const bitsgetfunc getbpp[4] = {get8, get16, get24, get32};
+ 
+-float getieee32(const IDirectSoundBufferImpl *dsb, BYTE *base, DWORD channel)
++void getieee32(const IDirectSoundBufferImpl *dsb, BYTE *base, float *dst, unsigned samples, DWORD channel)
+ {
++    DWORD channels = dsb->pwfx->nChannels;
+     const BYTE *buf = base + 4 * channel;
+     const float *sbuf = (const float*)(buf);
+-    /* The value will be clipped later, when put into some non-float buffer */
+-    return *sbuf;
++    int i;
++
++    for (i = 0; i < samples; ++i)
++        /* The value will be clipped later, when put into some non-float buffer */
++        dst[i] = sbuf[i * channels];
+ }
+ 
+ void putieee32(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value)
+diff --git a/dlls/dsound/dsound_private.h b/dlls/dsound/dsound_private.h
+index 013b704272a..4902f7c019f 100644
+--- a/dlls/dsound/dsound_private.h
++++ b/dlls/dsound/dsound_private.h
+@@ -43,10 +43,10 @@ typedef struct IDirectSoundBufferImpl        IDirectSoundBufferImpl;
+ typedef struct DirectSoundDevice             DirectSoundDevice;
+ 
+ /* dsound_convert.h */
+-typedef float (*bitsgetfunc)(const IDirectSoundBufferImpl *dsb, BYTE *base, DWORD channel);
++typedef void (*bitsgetfunc)(const IDirectSoundBufferImpl *dsb, BYTE *base, float *dst, unsigned samples, DWORD channel);
+ typedef void (*bitsputfunc)(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value);
+ extern const bitsgetfunc getbpp[4];
+-float getieee32(const IDirectSoundBufferImpl *dsb, BYTE *base, DWORD channel);
++void getieee32(const IDirectSoundBufferImpl *dsb, BYTE *base, float *dst, unsigned samples, DWORD channel);
+ void putieee32(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value);
+ void putieee32_sum(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value);
+ void mixieee32(float *src, float *dst, unsigned samples);
+diff --git a/dlls/dsound/mixer.c b/dlls/dsound/mixer.c
+index 7234394e8df..fca7f09d6b6 100644
+--- a/dlls/dsound/mixer.c
++++ b/dlls/dsound/mixer.c
+@@ -279,12 +279,28 @@ void DSOUND_CheckEvent(const IDirectSoundBufferImpl *dsb, DWORD playpos, int len
+     }
+ }
+ 
+-static inline float get_current_sample(const IDirectSoundBufferImpl *dsb,
+-        BYTE *buffer, DWORD buflen, DWORD mixpos, DWORD channel)
++static inline void get_samples(const IDirectSoundBufferImpl *dsb, BYTE *buffer, DWORD buflen,
++        DWORD mixpos, DWORD channel, DWORD count, float *dst)
+ {
+-    if (mixpos >= buflen && !(dsb->playflags & DSBPLAY_LOOPING))
+-        return 0.0f;
+-    return dsb->get(dsb, buffer + (mixpos % buflen), channel);
++    UINT istride = dsb->pwfx->nBlockAlign;
++    DWORD advance;
++    DWORD pos;
++
++    if (!(dsb->playflags & DSBPLAY_LOOPING)) {
++        advance = buflen < mixpos ? 0 : min((buflen - mixpos) / istride, count);
++        dsb->get(dsb, buffer + mixpos, dst, advance, channel);
++        memset(dst + advance, 0, (count - advance) * sizeof(float));
++        return;
++    }
++
++    advance = min((buflen - mixpos % buflen) / istride, count);
++    dsb->get(dsb, buffer + mixpos % buflen, dst, advance, channel);
++    pos = advance;
++    while (pos < count) {
++        advance = min(buflen / istride, count - pos);
++        dsb->get(dsb, buffer, dst + pos, advance, channel);
++        pos += advance;
++    }
+ }
+ 
+ #ifdef __SSE__
+@@ -536,7 +552,7 @@ static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, DWORD *f
+     UINT required_input = max(
+             (freqAcc_start + (count - 1) * dsb->freqAdjustNum) / dsb->freqAdjustDen + FIR_WIDTH,
+             (freqAcc_start + (count - 1 + FIR_WIDTH) * dsb->freqAdjustNum) / dsb->freqAdjustDen);
+-    float *intermediate, *output, *itmp;
++    float *intermediate, *output;
+ 
+     DWORD len = required_input * channels;
+     /* Allocate an output buffer for each channel with padding on both ends as
+@@ -570,14 +586,14 @@ static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, DWORD *f
+      * if you want -msse3 to have any effect.
+      * This is good for CPU cache effects, too.
+      */
+-    itmp = intermediate;
+     for (channel = 0; channel < channels; channel++) {
+-        for (i = 0; i < committed_samples; i++)
+-            *(itmp++) = get_current_sample(dsb, dsb->committedbuff,
+-                dsb->writelead, dsb->committed_mixpos + i * istride, channel);
+-        for (; i < required_input; i++)
+-            *(itmp++) = get_current_sample(dsb, dsb->buffer->memory,
+-                    dsb->buflen, dsb->sec_mixpos + i * istride, channel);
++        get_samples(dsb, dsb->committedbuff, dsb->writelead, dsb->committed_mixpos, channel,
++                committed_samples, intermediate + channel * required_input);
++        if (required_input > committed_samples)
++            get_samples(dsb, dsb->buffer->memory, dsb->buflen,
++                    dsb->sec_mixpos + committed_samples * istride, channel,
++                    required_input - committed_samples,
++                    intermediate + channel * required_input + committed_samples);
+     }
+ 
+     for (channel = 0; channel < channels; channel++)
+@@ -597,25 +613,43 @@ static UINT cp_fields_noresample(IDirectSoundBufferImpl *dsb, UINT count)
+     UINT istride = dsb->pwfx->nBlockAlign;
+     UINT ostride = dsb->device->pwfx->nChannels * sizeof(float);
+     UINT committed_samples = 0;
++    float *intermediate;
+     DWORD channel, i;
+ 
++    DWORD len = count * dsb->mix_channels;
++    len *= sizeof(float);
++
+     if (!secondarybuffer_is_audible(dsb))
+         return count;
+ 
++    if (!dsb->device->cp_buffer) {
++        dsb->device->cp_buffer = malloc(len);
++        dsb->device->cp_buffer_len = len;
++    } else if (len > dsb->device->cp_buffer_len) {
++        dsb->device->cp_buffer = realloc(dsb->device->cp_buffer, len);
++        dsb->device->cp_buffer_len = len;
++    }
++
++    intermediate = dsb->device->cp_buffer;
++
+     if(dsb->use_committed) {
+         committed_samples = (dsb->writelead - dsb->committed_mixpos) / istride;
+         committed_samples = committed_samples <= count ? committed_samples : count;
+     }
+ 
+-    for (i = 0; i < committed_samples; i++)
+-        for (channel = 0; channel < dsb->mix_channels; channel++)
+-            dsb->put(dsb, i * ostride, channel, get_current_sample(dsb, dsb->committedbuff,
+-                dsb->writelead, dsb->committed_mixpos + i * istride, channel));
++    for (channel = 0; channel < dsb->mix_channels; channel++)
++    {
++        get_samples(dsb, dsb->committedbuff, dsb->writelead, dsb->committed_mixpos, channel,
++                committed_samples, intermediate + channel * count);
++        if (count > committed_samples)
++            get_samples(dsb, dsb->buffer->memory, dsb->buflen,
++                    dsb->sec_mixpos + committed_samples * istride, channel,
++                    count - committed_samples, intermediate + channel * count + committed_samples);
++    }
+ 
+-    for (; i < count; i++)
++    for (i = 0; i < count; i++)
+         for (channel = 0; channel < dsb->mix_channels; channel++)
+-            dsb->put(dsb, i * ostride, channel, get_current_sample(dsb, dsb->buffer->memory,
+-                dsb->buflen, dsb->sec_mixpos + i * istride, channel));
++            dsb->put(dsb, i * ostride, channel, intermediate[channel * count + i]);
+ 
+     return count;
+ }
