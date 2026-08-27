@@ -1,0 +1,34 @@
+From 18c0b9fcc910e87f627b2a670a6380f75240a910 Mon Sep 17 00:00:00 2001
+From: Shimizu Hikaru <MuPendulum@users.noreply.github.com>
+Date: Thu, 27 Aug 2026 22:20:10 +0900
+Subject: [PATCH] kernel32: Fix ARM64EC compilation
+
+The original change added an __x86_64__ guard, but ARM64EC also
+defines __x86_64__. Exclude __arm64ec__ so that the x86-64-specific
+code is not selected when building for ARM64EC.
+---
+ dlls/kernel32/module.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/dlls/kernel32/module.c b/dlls/kernel32/module.c
+index f64ac49..2a9c025 100644
+--- a/dlls/kernel32/module.c
++++ b/dlls/kernel32/module.c
+@@ -262,7 +262,7 @@ BOOL WINAPI GetBinaryTypeA( LPCSTR lpApplicationName, LPDWORD lpBinaryType )
+     return GetBinaryTypeW(NtCurrentTeb()->StaticUnicodeString.Buffer, lpBinaryType);
+ }
+ 
+-#ifdef __x86_64__
++#if defined(__x86_64__) && !defined(__arm64ec__)
+ static BOOL needs_int3_hack(void)
+ {
+     static volatile int cache = -1;
+@@ -325,7 +325,7 @@ FARPROC get_proc_address( HMODULE hModule, LPCSTR function )
+     {
+         ANSI_STRING     str;
+ 
+-#ifdef __x86_64__
++#if defined(__x86_64__) && !defined(__arm64ec__)
+         if (needs_int3_hack() && (strcmp( function, "KiUserApcDispatcher" ) == 0 || strcmp( function, "KiUserCallbackDispatcher" ) == 0))
+         {
+             FIXME( "HACK: returning int3 stub instead of %s\n", function );
