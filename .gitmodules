@@ -1,6 +1,7 @@
 [submodule "wine"]
 	path = wine
-	url = https://github.com/CachyOS/wine-cachyos.git
+	url = https://dawn.wine/dawn-winery/wine-dwproton.git
+	branch = base
 [submodule "meson"]
 	path = meson
 	url = https://github.com/mesonbuild/meson.git
@@ -165,3 +166,6 @@
 [submodule "dxvk-igdext"]
 	path = dxvk-igdext
 	url = https://github.com/GameTechDev/dxvk-igdext
+[submodule "steamrtdeps/7zip"]
+	path = steamrtdeps/7zip
+	url = https://github.com/ip7z/7zip
