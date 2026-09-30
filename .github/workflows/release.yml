@@ -24,12 +24,6 @@ jobs:
           - name: ${{ github.ref_name }}-x86_64_v3
             cflags: -O3 -march=haswell -mno-rdrnd --param=l1-cache-size=32 --param=avoid-fma-max-bits=128
             rustflags: -Copt-level=3 -Ctarget-cpu=haswell -Ctarget-feature=-rdrand -Ccodegen-units=1
-
-          - name: ${{ github.ref_name }}-arm64
-            configure: >-
-              --without-nvidia-libs
-              --target-arch=arm64
-            runner: 'ubuntu-24.04-arm'
     uses: ./.github/workflows/_job_build.yml
     with:
       name: ${{ matrix.name }}
@@ -71,7 +65,6 @@ jobs:
         include:
           - name: ${{ github.ref_name }}-x86_64
           - name: ${{ github.ref_name }}-x86_64_v3
-          - name: ${{ github.ref_name }}-arm64
     uses: ./.github/workflows/_job_upload.yml
     with:
       version: ${{ github.ref_name }}
