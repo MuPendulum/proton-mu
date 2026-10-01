@@ -552,7 +552,6 @@ FFMPEG_CONFIGURE_ARGS += \
 	--enable-version3 \
 	--enable-gmp \
 	--enable-gnutls \
-	--enable-libdav1d \
 	--enable-libfontconfig \
 	--enable-libfreetype \
 	--enable-libfribidi \
@@ -595,7 +594,6 @@ FFMPEG_aarch64-unix_CONFIGURE_ARGS := \
 	--arch=aarch64 \
 	--target-os=linux
 
-FFMPEG_DEPENDS += dav1d
 FFMPEG_DEPENDS += $(LIBXML2_DEPENDENCY)
 FFMPEG_i386_DEPENDS += $(LIBWEBP_DEPENDENCY)
 FFMPEG_i386_DEPENDS += $(XZ_DEPENDENCY)
