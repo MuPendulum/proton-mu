@@ -1,0 +1,74 @@
+From 247ff9f59c3550020befd1a6339fd331b91fed4a Mon Sep 17 00:00:00 2001
+From: Alex Henrie <alexhenrie24@gmail.com>
+Date: Sun, 26 Jul 2026 19:42:17 -0600
+Subject: [PATCH 1/2] kernelbase: Make Char(Next|Prev)A call
+ Char(Next|Prev)ExA.
+
+---
+ dlls/kernelbase/string.c | 12 ++----------
+ 1 file changed, 2 insertions(+), 10 deletions(-)
+
+diff --git a/dlls/kernelbase/string.c b/dlls/kernelbase/string.c
+index f83ae35f..69fe970f 100644
+--- a/dlls/kernelbase/string.c
++++ b/dlls/kernelbase/string.c
+@@ -1106,9 +1106,7 @@ LPWSTR WINAPI CharLowerW(WCHAR *str)
+ 
+ LPSTR WINAPI CharNextA(const char *ptr)
+ {
+-    if (!*ptr) return (LPSTR)ptr;
+-    if (IsDBCSLeadByte( ptr[0] ) && ptr[1]) return (LPSTR)(ptr + 2);
+-    return (LPSTR)(ptr + 1);
++    return CharNextExA(CP_ACP, ptr, 0);
+ }
+ 
+ LPSTR WINAPI CharNextExA(WORD codepage, const char *ptr, DWORD flags)
+@@ -1127,13 +1125,7 @@ LPWSTR WINAPI CharNextW(const WCHAR *x)
+ 
+ LPSTR WINAPI CharPrevA(const char *start, const char *ptr)
+ {
+-    while (*start && (start < ptr))
+-    {
+-        LPCSTR next = CharNextA(start);
+-        if (next >= ptr) break;
+-        start = next;
+-    }
+-    return (LPSTR)start;
++    return CharPrevExA(CP_ACP, start, ptr, 0);
+ }
+ 
+ LPSTR WINAPI CharPrevExA(WORD codepage, const char *start, const char *ptr, DWORD flags)
+
+From 7227b011372c64b2245b0f2866910d87ce39f593 Mon Sep 17 00:00:00 2001
+From: Alex Henrie <alexhenrie24@gmail.com>
+Date: Sun, 26 Jul 2026 19:42:17 -0600
+Subject: [PATCH 2/2] kernelbase: Search backwards in CharPrevExA.
+
+Wine-Bug: https://bugs.winehq.org/show_bug.cgi?id=59926
+Wine-Bug: https://bugs.winehq.org/show_bug.cgi?id=60069
+---
+ dlls/kernelbase/string.c | 11 ++++-------
+ 1 file changed, 4 insertions(+), 7 deletions(-)
+
+diff --git a/dlls/kernelbase/string.c b/dlls/kernelbase/string.c
+index 69fe970f..60372ed1 100644
+--- a/dlls/kernelbase/string.c
++++ b/dlls/kernelbase/string.c
+@@ -1130,13 +1130,10 @@ LPSTR WINAPI CharPrevA(const char *start, const char *ptr)
+ 
+ LPSTR WINAPI CharPrevExA(WORD codepage, const char *start, const char *ptr, DWORD flags)
+ {
+-    while (*start && (start < ptr))
+-    {
+-        LPCSTR next = CharNextExA(codepage, start, flags);
+-        if (next >= ptr) break;
+-        start = next;
+-    }
+-    return (LPSTR)start;
++    /* Assume that ptr is not the second byte of a DBCS pair and search backwards */
++    if (ptr <= start) return (char *)ptr;
++    if (ptr >= start + 2 && IsDBCSLeadByteEx(codepage, ptr[-2])) return (char *)(ptr - 2);
++    return (char *)(ptr - 1);
+ }
+ 
+ LPWSTR WINAPI CharPrevW(const WCHAR *start, const WCHAR *x)
