@@ -1,6 +1,6 @@
 [submodule "wine"]
 	path = wine
-	url = https://dawn.wine/dawn-winery/wine-dwproton.git
+	url = https://github.com/MuPendulum/wine-dwproton-mirror.git
 	branch = base
 [submodule "meson"]
 	path = meson
