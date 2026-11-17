@@ -87,6 +87,7 @@ jobs:
         include:
           - name: ${{ github.ref_name }}-x86_64
           - name: ${{ github.ref_name }}-x86_64_v3
+          - name: ${{ github.ref_name }}-x86_64_v3-llvm
           - name: ${{ github.ref_name }}-arm64
     uses: ./.github/workflows/_job_upload.yml
     with:
