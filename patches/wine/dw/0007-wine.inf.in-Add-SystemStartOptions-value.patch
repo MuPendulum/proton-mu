@@ -1,0 +1,22 @@
+From d7bcc6cd37e9d00844256d8261f477ece8c47453 Mon Sep 17 00:00:00 2001
+From: shxrrydw <sherrydrv@gmail.com>
+Date: Thu, 6 Aug 2026 01:36:41 +0200
+Subject: [PATCH 07/35] wine.inf.in: Add SystemStartOptions value.
+
+App: Hololive Dreams (4282500).
+---
+ loader/wine.inf.in | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/loader/wine.inf.in b/loader/wine.inf.in
+index 32d42abaf90..2a480d58730 100644
+--- a/loader/wine.inf.in
++++ b/loader/wine.inf.in
+@@ -471,6 +471,7 @@ HKLM,Software\Microsoft\DirectPlay\Service Providers\Serial Connection For Direc
+ HKLM,Software\Microsoft\DirectPlay\Service Providers\Serial Connection For DirectPlay,"Path",,"dpmodemx.dll"
+ 
+ [SessionMgr]
++HKLM,%Control%,"SystemStartOptions",,"NOEXECUTE=OPTIN"
+ HKLM,%Control%\Session Manager,CriticalSectionTimeout,0x00040002,0x00278d00
+ HKLM,%Control%\Session Manager,GlobalFlag,0x00040002,0
+ HKLM,%Control%\Session Manager,HeapDeCommitFreeBlockThreshold,0x00040002,0

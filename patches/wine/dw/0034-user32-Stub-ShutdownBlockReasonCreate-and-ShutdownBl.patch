@@ -1,0 +1,55 @@
+From ea0c48dd34563934dcb13ce8a262d21e46b508ed Mon Sep 17 00:00:00 2001
+From: Buggus Mageevers <11020472+BuggusMageevers@users.noreply.github.com>
+Date: Fri, 2 Oct 2026 22:50:54 -0400
+Subject: [PATCH 34/35] user32: Stub ShutdownBlockReasonCreate and
+ ShutdownBlockReasonDestroy with a window thread check.
+
+https://dawn.wine/dawn-winery/dwproton/pulls/65
+
+App: Goddess of Victory: NIKKE.
+---
+ dlls/user32/user_main.c | 24 ++++++++++++++++++------
+ 1 file changed, 18 insertions(+), 6 deletions(-)
+
+diff --git a/dlls/user32/user_main.c b/dlls/user32/user_main.c
+index 6444e796cc0..a0e0ec60752 100644
+--- a/dlls/user32/user_main.c
++++ b/dlls/user32/user_main.c
+@@ -414,9 +414,15 @@ int WINAPI RegisterServicesProcess(DWORD ServicesProcessId)
+  */
+ BOOL WINAPI ShutdownBlockReasonCreate(HWND hwnd, LPCWSTR reason)
+ {
+-    FIXME("(%p, %s): stub\n", hwnd, debugstr_w(reason));
+-    SetLastError( ERROR_CALL_NOT_IMPLEMENTED );
+-    return FALSE;
++    TRACE("(%p, %s)\n", hwnd, debugstr_w(reason));
++
++    if (GetWindowThreadProcessId(hwnd, NULL) != GetCurrentThreadId())
++    {
++        SetLastError(ERROR_ACCESS_DENIED);
++        return FALSE;
++    }
++
++    return TRUE;
+ }
+ 
+ /***********************************************************************
+@@ -424,9 +430,15 @@ BOOL WINAPI ShutdownBlockReasonCreate(HWND hwnd, LPCWSTR reason)
+  */
+ BOOL WINAPI ShutdownBlockReasonDestroy(HWND hwnd)
+ {
+-    FIXME("(%p): stub\n", hwnd);
+-    SetLastError( ERROR_CALL_NOT_IMPLEMENTED );
+-    return FALSE;
++    TRACE("(%p)\n", hwnd);
++
++    if (GetWindowThreadProcessId(hwnd, NULL) != GetCurrentThreadId())
++    {
++        SetLastError(ERROR_ACCESS_DENIED);
++        return FALSE;
++    }
++
++    return TRUE;
+ }
+ 
+ const char *SPY_GetMsgName( UINT msg, HWND hwnd )

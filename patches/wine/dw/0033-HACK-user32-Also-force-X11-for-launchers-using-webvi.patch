@@ -1,0 +1,53 @@
+From 57eecc41fc002e28fb3fa688eecb1df6724a3940 Mon Sep 17 00:00:00 2001
+From: shxrrydw <sherrydrv@gmail.com>
+Date: Tue, 29 Sep 2026 16:20:25 +0200
+Subject: [PATCH 33/35] HACK: user32: Also force X11 for launchers using
+ webview2.
+
+Based on GE's patches to force X11 for launchers.
+
+App: Wuthering Waves (3513350).
+---
+ dlls/user32/user_main.c | 22 ++++++++++++++++++++++
+ 1 file changed, 22 insertions(+)
+
+diff --git a/dlls/user32/user_main.c b/dlls/user32/user_main.c
+index a3e93733e13..6444e796cc0 100644
+--- a/dlls/user32/user_main.c
++++ b/dlls/user32/user_main.c
+@@ -136,6 +136,17 @@ static BOOL path_contains( const WCHAR *path, const WCHAR *needle )
+     return FALSE;
+ }
+ 
++static BOOL dir_contains( const WCHAR *image, const WCHAR *name, const WCHAR *entry )
++{
++    WCHAR path[MAX_PATH];
++    size_t len = name - image;
++
++    if (len + wcslen( entry ) >= ARRAY_SIZE(path)) return FALSE;
++    memcpy( path, image, len * sizeof(WCHAR) );
++    wcscpy( path + len, entry );
++    return GetFileAttributesW( path ) != INVALID_FILE_ATTRIBUTES;
++}
++
+ static BOOL use_x11_launcher_driver( const WCHAR *image, const WCHAR *name )
+ {
+     WCHAR custom[MAX_PATH];
+@@ -175,6 +186,17 @@ static BOOL use_x11_launcher_driver( const WCHAR *image, const WCHAR *name )
+         path_contains( image, L"\\Program Files\\Origin\\" ))
+         return TRUE;
+ 
++    if (!wcsicmp( name, L"nikke_launcher.exe" ) ||
++        !wcsicmp( name, L"tbs_browser.exe" ) ||
++        !wcsicmp( name, L"INTLWebViewHelper.exe" ) ||
++        !wcsicmp( name, L"msedgewebview2.exe" ))
++        return TRUE;
++
++    /* kuro launchers */
++    if (!wcsicmp( name, L"launcher_main.exe" ) &&
++        dir_contains( image, name, L"WebView2Loader.dll" ))
++        return TRUE;
++
+     return FALSE;
+ }
+ 

@@ -1,0 +1,46 @@
+From 517e5162d9e1c3daeaf151241fe190c95740ba0d Mon Sep 17 00:00:00 2001
+From: shxrrydw <sherrydrv@gmail.com>
+Date: Fri, 16 Oct 2026 16:14:02 +0200
+Subject: [PATCH 20/35] Revert "wdfldr.sys: Populate function table for
+ WdfDriverMiniportUnload."
+
+This reverts commit 616a517df1c2668de4154cdbe30a834036ed27df.
+---
+ dlls/wdfldr.sys/wdfldr_main.c | 17 +----------------
+ 1 file changed, 1 insertion(+), 16 deletions(-)
+
+diff --git a/dlls/wdfldr.sys/wdfldr_main.c b/dlls/wdfldr.sys/wdfldr_main.c
+index dbaf81470a6..05eef9932dc 100644
+--- a/dlls/wdfldr.sys/wdfldr_main.c
++++ b/dlls/wdfldr.sys/wdfldr_main.c
+@@ -89,12 +89,6 @@ static WDFLDR_CLIENT_INFO *find_client_info(DRIVER_OBJECT *driver)
+     return NULL;
+ }
+ 
+-/* stub for WdfDriverMiniportUnload (idx 201) */
+-static void WINAPI wdf_stub_void_noop(void *arg)
+-{
+-    TRACE("stub called with %p\n", arg);
+-}
+-
+ NTSTATUS WINAPI WdfVersionBind(DRIVER_OBJECT *driver, UNICODE_STRING *reg_path, 
+                                 WDF_BIND_INFO *bind_info, PWDF_COMPONENT_GLOBALS *component_globals)
+ {
+@@ -151,16 +145,7 @@ NTSTATUS WINAPI WdfVersionBind(DRIVER_OBJECT *driver, UNICODE_STRING *reg_path,
+             goto done;
+         }
+         
+-        /* populate index 201 (WdfDriverMiniportUnload) */
+-        if (bind_info->FuncCount > 201)
+-        {
+-            ((void**)client_info->func_table)[201] = wdf_stub_void_noop;
+-        }
+-    }
+-
+-    if (bind_info->FuncTable)
+-    {
+-        *bind_info->FuncTable = client_info->func_table;
++        /* fixme: actually populate the function table (?) */
+     }
+ 
+     client_info->globals.Size = sizeof(WDF_COMPONENT_GLOBALS);

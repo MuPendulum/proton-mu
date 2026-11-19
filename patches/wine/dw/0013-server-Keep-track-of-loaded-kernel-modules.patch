@@ -1,0 +1,422 @@
+From c465f4a9b9159b46d9d77cbffd7251822fd1fcf5 Mon Sep 17 00:00:00 2001
+From: shxrrydw <sherrydrv@gmail.com>
+Date: Thu, 6 Aug 2026 16:27:12 +0200
+Subject: [PATCH 13/35] server: Keep track of loaded kernel modules.
+
+App: Hololive Dreams (4282500).
+---
+ include/wine/server_protocol.h | 58 ++++++++++++++++++++-
+ server/device.c                | 94 ++++++++++++++++++++++++++++++++++
+ server/protocol.def            | 27 ++++++++++
+ server/request_handlers.h      | 15 ++++++
+ server/request_trace.h         | 33 ++++++++++++
+ server/trace.c                 | 27 ++++++++++
+ 6 files changed, 253 insertions(+), 1 deletion(-)
+
+diff --git a/include/wine/server_protocol.h b/include/wine/server_protocol.h
+index 3e3f1819874..4aeb2d86256 100644
+--- a/include/wine/server_protocol.h
++++ b/include/wine/server_protocol.h
+@@ -378,6 +378,14 @@ struct luid_attr
+     unsigned int attrs;
+ };
+ 
++struct kernel_module_info
++{
++    client_ptr_t base;
++    mem_size_t   size;
++    data_size_t  name_len;
++
++};
++
+ struct acl
+ {
+     unsigned char  revision;
+@@ -5462,6 +5470,45 @@ struct set_kernel_object_ptr_reply
+ };
+ 
+ 
++struct register_kernel_module_request
++{
++    struct request_header __header;
++    char __pad_12[4];
++    client_ptr_t base;
++    mem_size_t   size;
++    /* VARARG(name,unicode_str); */
++};
++struct register_kernel_module_reply
++{
++    struct reply_header __header;
++};
++
++
++struct unregister_kernel_module_request
++{
++    struct request_header __header;
++    char __pad_12[4];
++    client_ptr_t base;
++};
++struct unregister_kernel_module_reply
++{
++    struct reply_header __header;
++};
++
++
++struct list_kernel_modules_request
++{
++    struct request_header __header;
++    char __pad_12[4];
++};
++struct list_kernel_modules_reply
++{
++    struct reply_header __header;
++    unsigned int module_count;
++    data_size_t  info_size;
++    /* VARARG(info,kernel_module_info); */
++};
++
+ 
+ struct grab_kernel_object_request
+ {
+@@ -6571,6 +6618,9 @@ enum request
+     REQ_get_next_device_request,
+     REQ_get_kernel_object_ptr,
+     REQ_set_kernel_object_ptr,
++    REQ_register_kernel_module,
++    REQ_unregister_kernel_module,
++    REQ_list_kernel_modules,
+     REQ_grab_kernel_object,
+     REQ_release_kernel_object,
+     REQ_get_kernel_object_handle,
+@@ -6891,6 +6941,9 @@ union generic_request
+     struct get_next_device_request_request get_next_device_request_request;
+     struct get_kernel_object_ptr_request get_kernel_object_ptr_request;
+     struct set_kernel_object_ptr_request set_kernel_object_ptr_request;
++    struct register_kernel_module_request register_kernel_module_request;
++    struct unregister_kernel_module_request unregister_kernel_module_request;
++    struct list_kernel_modules_request list_kernel_modules_request;
+     struct grab_kernel_object_request grab_kernel_object_request;
+     struct release_kernel_object_request release_kernel_object_request;
+     struct get_kernel_object_handle_request get_kernel_object_handle_request;
+@@ -7209,6 +7262,9 @@ union generic_reply
+     struct get_next_device_request_reply get_next_device_request_reply;
+     struct get_kernel_object_ptr_reply get_kernel_object_ptr_reply;
+     struct set_kernel_object_ptr_reply set_kernel_object_ptr_reply;
++    struct register_kernel_module_reply register_kernel_module_reply;
++    struct unregister_kernel_module_reply unregister_kernel_module_reply;
++    struct list_kernel_modules_reply list_kernel_modules_reply;
+     struct grab_kernel_object_reply grab_kernel_object_reply;
+     struct release_kernel_object_reply release_kernel_object_reply;
+     struct get_kernel_object_handle_reply get_kernel_object_handle_reply;
+@@ -7263,6 +7319,6 @@ union generic_reply
+     struct fsync_free_shm_idx_reply fsync_free_shm_idx_reply;
+ };
+ 
+-#define SERVER_PROTOCOL_VERSION 933
++#define SERVER_PROTOCOL_VERSION 934
+ 
+ #endif /* __WINE_WINE_SERVER_PROTOCOL_H */
+diff --git a/server/device.c b/server/device.c
+index 3eed74343e5..61911212acc 100644
+--- a/server/device.c
++++ b/server/device.c
+@@ -39,6 +39,20 @@
+ #include "request.h"
+ #include "process.h"
+ 
++/* loaded kernel module */
++
++struct kernel_module
++{
++    struct list      entry;      /* entry in kernel_modules list */
++    struct process  *owner;      /* process that registered it, not a reference */
++    client_ptr_t     base;       /* module base address in the owner process */
++    mem_size_t       size;       /* module size */
++    WCHAR           *name;       /* module name */
++    data_size_t      name_len;   /* length of name in bytes */
++};
++
++static struct list kernel_modules = LIST_INIT(kernel_modules);
++
+ /* IRP object */
+ 
+ struct irp_call
+@@ -1169,3 +1183,83 @@ DECL_HANDLER(get_kernel_object_handle)
+ 
+     release_object( manager );
+ }
++
++
++/* register a newly loaded kernel module */
++DECL_HANDLER(register_kernel_module)
++{
++    struct kernel_module *module;
++
++    if (!(module = mem_alloc( sizeof(*module) ))) return;
++
++    module->name_len = get_req_data_size();
++    module->name = NULL;
++
++    if (module->name_len && !(module->name = memdup( get_req_data(), module->name_len )))
++    {
++        free( module );
++        return;
++    }
++
++    module->owner = current->process;
++    module->base = req->base;
++    module->size = req->size;
++    list_add_tail( &kernel_modules, &module->entry );
++}
++
++
++/* unregister a kernel module that is being unloaded */
++DECL_HANDLER(unregister_kernel_module)
++{
++    struct kernel_module *module;
++
++    /* a module is identified by its base address within its owner process */
++    LIST_FOR_EACH_ENTRY( module, &kernel_modules, struct kernel_module, entry )
++    {
++        if (module->base == req->base && module->owner == current->process)
++        {
++            list_remove( &module->entry );
++            free( module->name );
++            free( module );
++            return;
++        }
++    }
++}
++
++
++/* return the list of currently loaded kernel modules */
++DECL_HANDLER(list_kernel_modules)
++{
++    struct kernel_module *module;
++    char *data;
++
++    LIST_FOR_EACH_ENTRY( module, &kernel_modules, struct kernel_module, entry )
++    {
++        reply->module_count++;
++        reply->info_size += (sizeof(struct kernel_module_info) + module->name_len
++                             + sizeof(client_ptr_t)-1) / sizeof(client_ptr_t) * sizeof(client_ptr_t);
++    }
++
++    if (reply->info_size > get_reply_max_size())
++    {
++        set_error( STATUS_INFO_LENGTH_MISMATCH );
++        return;
++    }
++
++    if (!(data = set_reply_data_size( reply->info_size ))) return;
++
++    memset( data, 0, reply->info_size );
++
++    LIST_FOR_EACH_ENTRY( module, &kernel_modules, struct kernel_module, entry )
++    {
++        struct kernel_module_info *info = (struct kernel_module_info *)data;
++
++        info->base     = module->base;
++        info->size     = module->size;
++        info->name_len = module->name_len;
++        memcpy( info + 1, module->name, module->name_len );
++        data += (sizeof(*info) + module->name_len
++                 + sizeof(client_ptr_t)-1) / sizeof(client_ptr_t) * sizeof(client_ptr_t);
++    }
++}
++
+diff --git a/server/protocol.def b/server/protocol.def
+index 8dceb76dffd..a5fdb04f9d5 100644
+--- a/server/protocol.def
++++ b/server/protocol.def
+@@ -395,6 +395,14 @@ struct luid_attr
+     unsigned int attrs;
+ };
+ 
++struct kernel_module_info
++{
++    client_ptr_t base;
++    mem_size_t   size;
++    data_size_t  name_len;
++    /* VARARG(name,unicode_str,name_len); */
++};
++
+ struct acl
+ {
+     unsigned char  revision;
+@@ -3868,6 +3876,25 @@ struct handle_info
+     client_ptr_t user_ptr;        /* kernel object pointer */
+ @END
+ 
++/* Register a loaded kernel module */
++@REQ(register_kernel_module)
++    client_ptr_t base;            /* module base address */
++    mem_size_t   size;            /* module size */
++    VARARG(name,unicode_str);     /* module name */
++@END
++
++/* Unregister a kernel module */
++@REQ(unregister_kernel_module)
++    client_ptr_t base;            /* module base address */
++@END
++
++/* Return the list of loaded kernel modules */
++@REQ(list_kernel_modules)
++@REPLY
++    unsigned int module_count;    /* number of modules */
++    data_size_t  info_size;       /* total size of module info */
++    VARARG(info,kernel_module_info); /* module info */
++@END
+ 
+ /* Grab server object reference from kernel object pointer */
+ @REQ(grab_kernel_object)
+diff --git a/server/request_handlers.h b/server/request_handlers.h
+index e9b735ee6ec..f85ce79d369 100644
+--- a/server/request_handlers.h
++++ b/server/request_handlers.h
+@@ -268,6 +268,9 @@ DECL_HANDLER(delete_device);
+ DECL_HANDLER(get_next_device_request);
+ DECL_HANDLER(get_kernel_object_ptr);
+ DECL_HANDLER(set_kernel_object_ptr);
++DECL_HANDLER(register_kernel_module);
++DECL_HANDLER(unregister_kernel_module);
++DECL_HANDLER(list_kernel_modules);
+ DECL_HANDLER(grab_kernel_object);
+ DECL_HANDLER(release_kernel_object);
+ DECL_HANDLER(get_kernel_object_handle);
+@@ -585,6 +588,9 @@ static const req_handler req_handlers[REQ_NB_REQUESTS] =
+     (req_handler)req_get_next_device_request,
+     (req_handler)req_get_kernel_object_ptr,
+     (req_handler)req_set_kernel_object_ptr,
++    (req_handler)req_register_kernel_module,
++    (req_handler)req_unregister_kernel_module,
++    (req_handler)req_list_kernel_modules,
+     (req_handler)req_grab_kernel_object,
+     (req_handler)req_release_kernel_object,
+     (req_handler)req_get_kernel_object_handle,
+@@ -2163,6 +2169,15 @@ C_ASSERT( offsetof(struct set_kernel_object_ptr_request, manager) == 12 );
+ C_ASSERT( offsetof(struct set_kernel_object_ptr_request, handle) == 16 );
+ C_ASSERT( offsetof(struct set_kernel_object_ptr_request, user_ptr) == 24 );
+ C_ASSERT( sizeof(struct set_kernel_object_ptr_request) == 32 );
++C_ASSERT( offsetof(struct register_kernel_module_request, base) == 16 );
++C_ASSERT( offsetof(struct register_kernel_module_request, size) == 24 );
++C_ASSERT( sizeof(struct register_kernel_module_request) == 32 );
++C_ASSERT( offsetof(struct unregister_kernel_module_request, base) == 16 );
++C_ASSERT( sizeof(struct unregister_kernel_module_request) == 24 );
++C_ASSERT( sizeof(struct list_kernel_modules_request) == 16 );
++C_ASSERT( offsetof(struct list_kernel_modules_reply, module_count) == 8 );
++C_ASSERT( offsetof(struct list_kernel_modules_reply, info_size) == 12 );
++C_ASSERT( sizeof(struct list_kernel_modules_reply) == 16 );
+ C_ASSERT( offsetof(struct grab_kernel_object_request, manager) == 12 );
+ C_ASSERT( offsetof(struct grab_kernel_object_request, user_ptr) == 16 );
+ C_ASSERT( sizeof(struct grab_kernel_object_request) == 24 );
+diff --git a/server/request_trace.h b/server/request_trace.h
+index 59a718c9e01..929b089f2f3 100644
+--- a/server/request_trace.h
++++ b/server/request_trace.h
+@@ -30,6 +30,7 @@ static void dump_varargs_directory_file_entries( const char *prefix, data_size_t
+ static void dump_varargs_filesystem_event( const char *prefix, data_size_t size );
+ static void dump_varargs_handle_infos( const char *prefix, data_size_t size );
+ static void dump_varargs_ints( const char *prefix, data_size_t size );
++static void dump_varargs_kernel_module_info( const char *prefix, data_size_t size );
+ static void dump_varargs_luid_attr( const char *prefix, data_size_t size );
+ static void dump_varargs_message_data( const char *prefix, data_size_t size );
+ static void dump_varargs_monitor_infos( const char *prefix, data_size_t size );
+@@ -3069,6 +3070,29 @@ static void dump_set_kernel_object_ptr_request( const struct set_kernel_object_p
+     dump_uint64( ", user_ptr=", &req->user_ptr );
+ }
+ 
++static void dump_register_kernel_module_request( const struct register_kernel_module_request *req )
++{
++    dump_uint64( " base=", &req->base );
++    dump_uint64( ", size=", &req->size );
++    dump_varargs_unicode_str( ", name=", cur_size );
++}
++
++static void dump_unregister_kernel_module_request( const struct unregister_kernel_module_request *req )
++{
++    dump_uint64( " base=", &req->base );
++}
++
++static void dump_list_kernel_modules_request( const struct list_kernel_modules_request *req )
++{
++}
++
++static void dump_list_kernel_modules_reply( const struct list_kernel_modules_reply *req )
++{
++    fprintf( stderr, " module_count=%08x", req->module_count );
++    fprintf( stderr, ", info_size=%u", req->info_size );
++    dump_varargs_kernel_module_info( ", info=", cur_size );
++}
++
+ static void dump_grab_kernel_object_request( const struct grab_kernel_object_request *req )
+ {
+     fprintf( stderr, " manager=%04x", req->manager );
+@@ -3856,6 +3880,9 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] =
+     (dump_func)dump_get_next_device_request_request,
+     (dump_func)dump_get_kernel_object_ptr_request,
+     (dump_func)dump_set_kernel_object_ptr_request,
++    (dump_func)dump_register_kernel_module_request,
++    (dump_func)dump_unregister_kernel_module_request,
++    (dump_func)dump_list_kernel_modules_request,
+     (dump_func)dump_grab_kernel_object_request,
+     (dump_func)dump_release_kernel_object_request,
+     (dump_func)dump_get_kernel_object_handle_request,
+@@ -4175,6 +4202,9 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] =
+     NULL,
+     NULL,
+     NULL,
++    (dump_func)dump_list_kernel_modules_reply,
++    NULL,
++    NULL,
+     (dump_func)dump_get_kernel_object_handle_reply,
+     (dump_func)dump_make_process_system_reply,
+     NULL,
+@@ -4490,6 +4520,9 @@ static const char * const req_names[REQ_NB_REQUESTS] =
+     "get_next_device_request",
+     "get_kernel_object_ptr",
+     "set_kernel_object_ptr",
++    "register_kernel_module",
++    "unregister_kernel_module",
++    "list_kernel_modules",
+     "grab_kernel_object",
+     "release_kernel_object",
+     "get_kernel_object_handle",
+diff --git a/server/trace.c b/server/trace.c
+index cf49a1bf041..495183f5f05 100644
+--- a/server/trace.c
++++ b/server/trace.c
+@@ -1623,6 +1623,33 @@ static void dump_varargs_monitor_infos( const char *prefix, data_size_t size )
+     remove_data( size );
+ }
+ 
++static void dump_varargs_kernel_module_info( const char *prefix, data_size_t size )
++{
++    fprintf( stderr,"%s{", prefix );
++    while (size)
++    {
++        const struct kernel_module_info *info = cur_data;
++        data_size_t len;
++
++        if (size < sizeof(*info)) break;
++        len = (sizeof(*info) + info->name_len + sizeof(client_ptr_t)-1)
++               / sizeof(client_ptr_t) * sizeof(client_ptr_t);
++        if (size < len) break;
++
++        dump_uint64( "{base=", &info->base );
++        dump_uint64( ",size=", &info->size );
++        fprintf( stderr, ",name=L\"" );
++
++        dump_strW( (const WCHAR *)(info + 1), info->name_len, stderr, "\"\"" );
++        fprintf( stderr, "\"}" );
++
++        size -= len;
++        remove_data( len );
++        if (size)fputc( ',', stderr );
++    }
++    fputc( '}', stderr );
++}
++
+ void trace_request(void)
+ {
+     enum request req = current->req.request_header.req;
